@@ -1,0 +1,13 @@
+# Ignore Node modules
+node_modules/
+
+# Ignore Python venv
+venv/
+
+# Ignore Spleeter's pretrained models
+pretrained_models/
+
+# Ignore VSCode configuration
+.vscode/
+
+# You can add more if needed...
