@@ -15,7 +15,7 @@ Está basado en:
 ## Requisitos
 
 1. **Node.js** (versión LTS recomendada: 16.x, 18.x, o 20.x).  
-2. **Python 3.x** (Probado en python 3.9.13).  
+2. **Python 3.x** (Probado en python 3.9.13. No utilizar en Python 3.13).  
 3. **ffmpeg** instalado y disponible en tu PATH.  
 4. **Spleeter** y sus dependencias (TensorFlow, NumPy < 2) en un entorno virtual de Python.
 
