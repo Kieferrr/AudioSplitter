@@ -1,13 +1,88 @@
-# Ignore Node modules
+
+---
+
+## 🗂️ .gitignore
+
+A continuación, te proporciono un archivo `.gitignore` actualizado que excluye todos los archivos y carpetas que no deberían estar en el repositorio, incluyendo dependencias, archivos temporales, carpetas de salida, etc.
+
+```gitignore
+# Node.js
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Ignore Python venv
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# dotenv environment variables file
+.env
+
+# Build directories
+dist/
+build/
+
+# Spleeter output directories
+stems_*/
+
+# Uploaded files
+uploads/
+
+# Output files
+public/outputs/*
+
+# Temporary files
+tmp_*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
 venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Ignore Spleeter's pretrained models
-pretrained_models/
-
-# Ignore VSCode configuration
+# Editor directories and files
 .vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 
-# You can add more if needed...
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Others
+*.swp
+*~
+
+# Modelos preentrenados de Spleeter
+pretrained_models/
