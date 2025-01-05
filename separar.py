@@ -4,17 +4,18 @@ import os
 import subprocess
 
 """
-Uso: python separar.py <ruta_audio_entrada> <randomId>
+Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]
 Genera una carpeta "stems_<randomId>/" con los stems resultantes.
 """
 
 def main():
     if len(sys.argv) < 3:
-        print("Faltan argumentos. Uso: python separar.py <ruta_audio_entrada> <randomId>")
+        print("Faltan argumentos. Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]")
         sys.exit(1)
 
     audio_input = sys.argv[1]
     random_id = sys.argv[2]
+    stems = sys.argv[3] if len(sys.argv) > 3 else "5"  # Predeterminado a 5 stems
 
     # Carpeta donde se almacenarán los stems
     output_dir = f"stems_{random_id}"
@@ -23,11 +24,12 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Ejecutar Spleeter con 2 stems (voz / acompañamiento)
+    # Construir el comando para Spleeter
+    preset = f"spleeter:{stems}stems"
     cmd = [
         "spleeter",
         "separate",
-        "-p", "spleeter:2stems",
+        "-p", preset,
         "-o", output_dir,
         audio_input
     ]

@@ -43,11 +43,12 @@
     audio {
       background-color: #2b2b2b;
       border-radius: 4px;
+      width: 100%;
     }
 
     /* Estilos adicionales para mejorar la apariencia */
     .container {
-      max-width: 800px;
+      max-width: 1000px; /* Aumentar el ancho máximo para acomodar más columnas */
     }
 
     .form-section {
@@ -94,6 +95,25 @@
     input[type="file"]::file-selector-button:hover {
       background-color: #4c4ceb;
     }
+
+    /* Estilos para las tarjetas de audio */
+    .audio-card {
+      background-color: #2b2b2b;
+      border: 1px solid #2b2b2b;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      height: 100%; /* Asegura que todas las tarjetas tengan la misma altura */
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .audio-label {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -137,69 +157,105 @@
       </form>
     </div>
 
+    <!-- Mensajes de estado -->
     <div id="status" class="mt-3"></div>
-    <div id="result" class="mt-4"></div>
+
+    <!-- Spinner (oculto por defecto) -->
+    <div id="spinner" class="d-none d-flex align-items-center justify-content-center my-3">
+      <strong>Procesando...</strong>
+      <div class="spinner-border spinner-border-custom text-primary ms-2" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Contenedor para los resultados -->
+    <div id="result" class="mt-4 row g-3">
+      <!-- Las tarjetas de audio se agregarán aquí -->
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+    // Mapeo de nombres de stems a etiquetas en español
+    const stemLabels = {
+      'vocals': 'Voz',
+      'drums': 'Batería',
+      'bass': 'Bajo',
+      'piano': 'Piano',
+      'other': 'Otros'
+      // Agrega más mapeos según los stems que uses
+    };
+
     const youtubeForm = document.getElementById('youtube-form');
     const uploadForm = document.getElementById('upload-form');
     const statusDiv = document.getElementById('status');
+    const spinner = document.getElementById('spinner');
     const resultDiv = document.getElementById('result');
 
     // Función para manejar la respuesta del servidor
     function handleResponse(data) {
-      // Mostrar el nombre de la canción o mensaje estático
-      statusDiv.innerHTML = `<strong>${data.message}</strong>`;
+      // Ocultar el spinner
+      spinner.classList.add('d-none');
+
+         // Mostrar mensaje de estado con clase de alerta de éxito
+         statusDiv.innerHTML = `<div class="alert alert-success" role="alert">
+        <strong>${data.message}</strong>
+      </div>`;
+
+
+      // Limpiar los resultados anteriores
+      resultDiv.innerHTML = '';
 
       data.files.forEach((fileUrl) => {
-        let trackName = '';
-        if (fileUrl.includes('vocals')) {
-          trackName = 'Voz';
-        } else if (fileUrl.includes('accompaniment')) {
-          trackName = 'Instrumentos';
-        } else {
-          trackName = 'Pista';
-        }
+        // Extraer el nombre del archivo del URL
+        const fileName = fileUrl.split('/').pop(); // Obtiene 'vocals.wav', 'drums.wav', etc.
+        const stemName = fileName.split('.')[0].toLowerCase(); // Obtiene 'vocals', 'drums', etc.
 
-        const audioWrapper = document.createElement('div');
-        audioWrapper.className = 'mb-4';
+        // Obtener la etiqueta correspondiente del mapeo
+        const trackName = stemLabels[stemName] || 'Instrumentos';
 
-        // No mostramos la ruta, sólo el nombre "Voz" / "Instrumentos"
-        const label = document.createElement('h5');
+        // Crear la columna de Bootstrap
+        const colDiv = document.createElement('div');
+        colDiv.className = 'col-12 col-sm-6 col-md-4 col-lg-5'; // 2 por fila en sm, 4 en lg
+
+        // Crear la tarjeta de audio
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'audio-card';
+
+        // Crear y asignar la etiqueta
+        const label = document.createElement('div');
         label.textContent = trackName;
-        label.className = 'mb-2';
+        label.className = 'audio-label';
 
+        // Crear el reproductor de audio
         const audio = document.createElement('audio');
         audio.controls = true;
         audio.src = fileUrl;
-        audio.className = 'w-100';
 
-        audioWrapper.appendChild(label);
-        audioWrapper.appendChild(audio);
-        resultDiv.appendChild(audioWrapper);
+        // Agregar elementos a la tarjeta
+        cardDiv.appendChild(label);
+        cardDiv.appendChild(audio);
+
+        // Agregar la tarjeta a la columna
+        colDiv.appendChild(cardDiv);
+
+        // Agregar la columna al contenedor de resultados
+        resultDiv.appendChild(colDiv);
       });
     }
 
-    // Función para mostrar el spinner
-    function showSpinner(text = 'Procesando URL') {
-      statusDiv.innerHTML = `
-        <div class="d-flex align-items-center justify-content-center">
-          <strong>${text}...</strong>
-          <div class="spinner-border spinner-border-custom text-primary ms-2" role="status">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-        </div>
-      `;
+    // Función para mostrar el spinner y limpiar mensajes anteriores
+    function showSpinner(message = 'Procesando') {
+      statusDiv.innerHTML = ''; // Limpiar mensajes anteriores
+      spinner.classList.remove('d-none');
+      resultDiv.innerHTML = ''; // Limpiar resultados anteriores
     }
 
     // Manejar el formulario de URL de YouTube
     youtubeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showSpinner();
-      resultDiv.innerHTML = '';
 
       const youtubeInput = document.getElementById('youtubeUrl');
       const urlValue = youtubeInput.value.trim();
@@ -221,15 +277,18 @@
         const data = await response.json();
         handleResponse(data);
       } catch (err) {
-        statusDiv.innerHTML = `<strong>Error:</strong> ${err.message}`;
+        
+      // Mostrar mensaje de estado con clase de alerta de éxito
+        statusDiv.innerHTML = `<div class="alert alert-success" role="alert">
+        <strong>${data.message}</strong>
+      </div>`;
       }
     });
 
     // Manejar el formulario de subida de archivos
     uploadForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      showSpinner('Procesando archivo');
-      resultDiv.innerHTML = '';
+      showSpinner();
 
       const formData = new FormData(uploadForm);
       const fileInput = document.getElementById('audioFile');
@@ -250,7 +309,11 @@
         // Limpiar el campo de archivo
         fileInput.value = '';
       } catch (err) {
-        statusDiv.innerHTML = `<strong>Error:</strong> ${err.message}`;
+        // Ocultar el spinner y mostrar el error en los resultados
+        spinner.classList.add('d-none');
+        statusDiv.innerHTML = `<div class="alert alert-danger" role="alert">
+          <strong>Error:</strong> ${err.message}
+        </div>`;
       }
     });
   </script>
