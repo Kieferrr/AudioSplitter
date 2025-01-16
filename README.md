@@ -41,11 +41,11 @@ Docker Compose simplifica la gestión de dependencias y entornos. Sigue estos pa
 ```bash
 git clone https://github.com/TU-USUARIO/TU-REPOSITORIO.git
 cd TU-REPOSITORIO
-2. Crear el Archivo docker-compose.yml
+
+#### 2. Crear el Archivo docker-compose.yml
+
 Asegúrate de tener un archivo docker-compose.yml en la raíz de tu proyecto con el siguiente contenido:
 
-yaml
-Copiar
 version: '3.8'
 
 services:
@@ -58,74 +58,71 @@ services:
       - ./public/outputs:/app/public/outputs
       - ./uploads:/app/uploads
     restart: unless-stopped
-3. Construir la Imagen Docker (si aún no lo has hecho)
+
+#### 3. Construir la Imagen Docker (si aún no lo has hecho)
+
 Si ya has construido la imagen myaudiosplitter, puedes omitir este paso. De lo contrario, ejecuta:
 
-bash
-Copiar
 docker build -t myaudiosplitter .
+
 Nota: Si deseas forzar la reconstrucción sin usar la caché de Docker, añade la opción --no-cache:
 
-bash
-Copiar
 docker build --no-cache -t myaudiosplitter .
-4. Iniciar los Servicios con Docker Compose
+
+### 4. Iniciar los Servicios con Docker Compose
+
 En la raíz de tu proyecto, ejecuta:
 
-bash
-Copiar
 docker-compose up -d
 up: Crea e inicia los contenedores.
 -d: Ejecuta los contenedores en segundo plano (detached mode).
-5. Verificar que el Contenedor Está Corriendo
-bash
-Copiar
+
+### 5. Verificar que el Contenedor Está Corriendo
+
 docker-compose ps
+
 Deberías ver una entrada para myaudiosplitter-container en la lista de contenedores en ejecución.
 
-6. Acceder a la Aplicación
+#### 6. Acceder a la Aplicación
+
 Abre tu navegador y navega a http://localhost:3000. Deberías ver la interfaz de usuario con un formulario para procesar URLs de YouTube.
 
-7. Detener y Reiniciar el Contenedor Docker Compose
+####7. Detener y Reiniciar el Contenedor Docker Compose
+
 Detener los Servicios:
 
-bash
-Copiar
 docker-compose stop
+
 Iniciar los Servicios Detenidos:
 
-bash
-Copiar
 docker-compose start
+
 Reiniciar los Servicios:
 
-bash
-Copiar
 docker-compose restart
-8. Eliminar los Servicios Docker Compose (Opcional)
+
+#### 8. Eliminar los Servicios Docker Compose (Opcional)
+
 Si ya no necesitas los contenedores, redes o volúmenes creados, ejecuta:
 
-bash
-Copiar
 docker-compose down
-Opción 2: Instalación Manual
+
+
+#### Opción 2: Instalación Manual
+
 Sigue los pasos originales si prefieres no usar Docker.
 
 Clonar el repositorio
 
-bash
-Copiar
 git clone https://github.com/TU-USUARIO/TU-REPOSITORIO.git
 cd TU-REPOSITORIO
+
 Instalar dependencias de Node
 
-bash
-Copiar
 npm install
+
 Crear y activar un entorno virtual (Python)
 
-bash
-Copiar
 python -m venv venv
 
 # Windows (PowerShell)
@@ -135,11 +132,10 @@ python -m venv venv
 source venv/bin/activate
 Instalar Spleeter y NumPy < 2 en el entorno virtual
 
-bash
-Copiar
 pip install --upgrade pip
 pip install "numpy<2"
 pip install spleeter
+
 Revisar ffmpeg
 
 Asegúrate de tener ffmpeg instalado y en el PATH.
@@ -148,113 +144,95 @@ Ejecutar la aplicación
 
 Con el entorno virtual activado, inicia el servidor:
 
-bash
-Copiar
 npm start
+
 Verás algo como:
 
-arduino
-Copiar
 Servidor escuchando en http://localhost:3000
+
 Abrir en el navegador
 
 Visita http://localhost:3000 para utilizar la aplicación.
 
-🎛️ Uso de la Página
-Procesar una URL de YouTube
-Pega la URL de YouTube que deseas procesar en el campo correspondiente.
-Haz clic en “Procesar”.
-Espera unos segundos (depende de la duración del audio).
-Aparecerán dos reproductores de audio:
-Voz (vocals)
-Instrumentos (accompaniment)
-Subir un Archivo de Audio Propio
-Selecciona un archivo de audio (mp3, wav, mp4) desde tu dispositivo.
-Haz clic en “Subir”.
-Espera a que la aplicación procese el archivo.
-Aparecerán dos reproductores de audio:
-Voz (vocals)
-Instrumentos (accompaniment)
 🧹 Limpieza de Archivos
+
 Con Docker:
 
 Al detener y eliminar el contenedor Docker, las carpetas mapeadas (public/outputs y uploads) permanecen en tu sistema host. Puedes limpiarlas manualmente si lo deseas:
 
-bash
-Copiar
 rm -rf public/outputs/*
 rm -rf uploads/*
+
 Instalación Manual:
 
 Cada vez que inicias el servidor (npm start), se ejecuta un script que borra las carpetas stems_<ID> y public/outputs/<ID> de sesiones anteriores.
 Además, al procesar un nuevo enlace o archivo, se borra la separación anterior para evitar ocupar espacio innecesariamente.
+
 🛠️ Problemas Comunes
+
 Opción 1: Usando Docker Compose
+
 Contenedor no arranca:
 
 Verifica los logs del contenedor para identificar errores:
 
-bash
-Copiar
 docker-compose logs -f
+
 Permisos de Volúmenes:
 
 Asegúrate de que las carpetas public/outputs y uploads tienen los permisos adecuados para que el contenedor pueda escribir en ellas.
+
 Opción 2: Instalación Manual
+
 Numpy/TensorFlow:
 
 Asegúrate de que numpy<2 está instalado para evitar conflictos con TensorFlow.
+
 ffmpeg no encontrado:
 
 Verifica que ffmpeg está instalado y en el PATH:
 
-bash
-Copiar
 which ffmpeg
+
 Permisos de scripts en Windows:
 
 Ejecuta PowerShell con permisos de administrador y ajusta la política de ejecución si es necesario:
 
-powershell
-Copiar
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 🔄 Actualizaciones y Mantenimiento
+
 Actualizar la Imagen Docker
+
 Si realizas cambios en el código o las dependencias, reconstruye la imagen Docker:
 
-bash
-Copiar
 docker build --no-cache -t myaudiosplitter .
+
 Luego, detén y elimina el contenedor existente, y ejecuta uno nuevo:
 
-bash
-Copiar
 docker-compose down
 docker-compose up -d
+
 Reutilizar el Contenedor Docker Compose
+
 Para reiniciar tu contenedor sin eliminarlo cada vez, sigue estos pasos:
 
 Detener los Servicios:
 
-powershell
-Copiar
 docker-compose stop
+
 Iniciar los Servicios Detenidos:
 
-powershell
-Copiar
 docker-compose start
+
 Notas para Usuarios de Windows (PowerShell):
 
-powershell
-Copiar
 docker-compose stop
 docker-compose start
+
 Actualizar Dependencias de Python
+
 Dentro del contenedor Docker, puedes actualizar las dependencias de Python si es necesario:
 
-bash
-Copiar
 docker exec -it myaudiosplitter-container /bin/bash
 pip install --upgrade pip setuptools wheel
 exit
