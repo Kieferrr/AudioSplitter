@@ -1,4 +1,3 @@
-```md
 # Audio Splitter (Demo)
 
 Este proyecto permite **separar** la voz y los instrumentos de una canción o video de YouTube.  
@@ -12,106 +11,250 @@ Está basado en:
 
 ---
 
-## Requisitos
+## 📋 Requisitos
+
+### Opción 1: Usando Docker
+
+1. **Docker** instalado en tu sistema.
+   - [Instalar Docker](https://docs.docker.com/get-docker/)
+
+2. **Docker Compose** (incluido con Docker Desktop en Windows y macOS, puede requerir instalación en Linux).
+   - [Instalar Docker Compose](https://docs.docker.com/compose/install/)
+
+### Opción 2: Instalación Manual
 
 1. **Node.js** (versión LTS recomendada: 16.x, 18.x, o 20.x).  
-2. **Python 3.x** (Probado en python 3.9.13. No utilizar en Python 3.13).  
+2. **Python 3.x** (Probado en Python 3.9.13. No utilizar en Python 3.13).  
 3. **ffmpeg** instalado y disponible en tu PATH.  
 4. **Spleeter** y sus dependencias (TensorFlow, NumPy < 2) en un entorno virtual de Python.
 
 ---
 
-## Instrucciones de instalación
+## 🚀 Instalación
 
-### 1. Clonar el repositorio
+### Opción 1: Usando Docker Compose
+
+Docker Compose simplifica la gestión de dependencias y entornos. Sigue estos pasos para dockerizar y ejecutar la aplicación utilizando Docker Compose.
+
+#### **1. Clonar el Repositorio**
 
 ```bash
 git clone https://github.com/TU-USUARIO/TU-REPOSITORIO.git
 cd TU-REPOSITORIO
+2. Crear el Archivo docker-compose.yml
+Asegúrate de tener un archivo docker-compose.yml en la raíz de tu proyecto con el siguiente contenido:
 
-### 2. Instalar dependencias de Node
+yaml
+Copiar
+version: '3.8'
+
+services:
+  audiosplitter:
+    image: myaudiosplitter
+    container_name: myaudiosplitter-container
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./public/outputs:/app/public/outputs
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+3. Construir la Imagen Docker (si aún no lo has hecho)
+Si ya has construido la imagen myaudiosplitter, puedes omitir este paso. De lo contrario, ejecuta:
+
+bash
+Copiar
+docker build -t myaudiosplitter .
+Nota: Si deseas forzar la reconstrucción sin usar la caché de Docker, añade la opción --no-cache:
+
+bash
+Copiar
+docker build --no-cache -t myaudiosplitter .
+4. Iniciar los Servicios con Docker Compose
+En la raíz de tu proyecto, ejecuta:
+
+bash
+Copiar
+docker-compose up -d
+up: Crea e inicia los contenedores.
+-d: Ejecuta los contenedores en segundo plano (detached mode).
+5. Verificar que el Contenedor Está Corriendo
+bash
+Copiar
+docker-compose ps
+Deberías ver una entrada para myaudiosplitter-container en la lista de contenedores en ejecución.
+
+6. Acceder a la Aplicación
+Abre tu navegador y navega a http://localhost:3000. Deberías ver la interfaz de usuario con un formulario para procesar URLs de YouTube.
+
+7. Detener y Reiniciar el Contenedor Docker Compose
+Detener los Servicios:
+
+bash
+Copiar
+docker-compose stop
+Iniciar los Servicios Detenidos:
+
+bash
+Copiar
+docker-compose start
+Reiniciar los Servicios:
+
+bash
+Copiar
+docker-compose restart
+8. Eliminar los Servicios Docker Compose (Opcional)
+Si ya no necesitas los contenedores, redes o volúmenes creados, ejecuta:
+
+bash
+Copiar
+docker-compose down
+Opción 2: Instalación Manual
+Sigue los pasos originales si prefieres no usar Docker.
+
+Clonar el repositorio
+
+bash
+Copiar
+git clone https://github.com/TU-USUARIO/TU-REPOSITORIO.git
+cd TU-REPOSITORIO
+Instalar dependencias de Node
+
+bash
+Copiar
 npm install
+Crear y activar un entorno virtual (Python)
 
-Esto descargará las dependencias listadas en package.json.
-
-### 3. Crear y activar un entorno virtual (Python)
-
-Para aislar Spleeter y las librerías de Python, se recomienda usar venv:
-
+bash
+Copiar
 python -m venv venv
-
-En Windows PowerShell, si recibes error de “ejecución de scripts deshabilitada”, ajústalo con:
-
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-Luego:
 
 # Windows (PowerShell)
 .\venv\Scripts\activate
 
 # macOS / Linux
 source venv/bin/activate
+Instalar Spleeter y NumPy < 2 en el entorno virtual
 
-### 4. Instalar Spleeter y NumPy < 2 en el venv
-
+bash
+Copiar
 pip install --upgrade pip
-pip install "numpy<2"       # Para evitar conflictos con TensorFlow
+pip install "numpy<2"
 pip install spleeter
-Para verificar que Spleeter funcione:
+Revisar ffmpeg
 
-spleeter separate -h
+Asegúrate de tener ffmpeg instalado y en el PATH.
 
-No debería dar error.
+Ejecutar la aplicación
 
-### 5. Revisar ffmpeg
+Con el entorno virtual activado, inicia el servidor:
 
-Asegúrate de tener ffmpeg instalado y en el PATH:
-
-Windows: Descarga FFmpeg y agrégalo a Variables de Entorno.
-macOS/Linux: brew install ffmpeg o sudo apt-get install ffmpeg, etc.
-
-### 6. Ejecutar la aplicación
-
-Con el venv activado, inicia el servidor:
-
+bash
+Copiar
 npm start
-
 Verás algo como:
 
+arduino
+Copiar
 Servidor escuchando en http://localhost:3000
+Abrir en el navegador
 
-### 7. Abrir en el navegador
+Visita http://localhost:3000 para utilizar la aplicación.
 
-Visita http://localhost:3000. Verás un formulario:
-
-Pega la URL de YouTube.
+🎛️ Uso de la Página
+Procesar una URL de YouTube
+Pega la URL de YouTube que deseas procesar en el campo correspondiente.
 Haz clic en “Procesar”.
-El servidor descargará el audio, ejecutará Spleeter y mostrará dos reproductores de audio:
+Espera unos segundos (depende de la duración del audio).
+Aparecerán dos reproductores de audio:
 Voz (vocals)
 Instrumentos (accompaniment)
+Subir un Archivo de Audio Propio
+Selecciona un archivo de audio (mp3, wav, mp4) desde tu dispositivo.
+Haz clic en “Subir”.
+Espera a que la aplicación procese el archivo.
+Aparecerán dos reproductores de audio:
+Voz (vocals)
+Instrumentos (accompaniment)
+🧹 Limpieza de Archivos
+Con Docker:
 
-### Uso de la página
+Al detener y eliminar el contenedor Docker, las carpetas mapeadas (public/outputs y uploads) permanecen en tu sistema host. Puedes limpiarlas manualmente si lo deseas:
 
-Pega la URL de YouTube que quieras procesar.
+bash
+Copiar
+rm -rf public/outputs/*
+rm -rf uploads/*
+Instalación Manual:
 
-Presiona “Procesar”.
+Cada vez que inicias el servidor (npm start), se ejecuta un script que borra las carpetas stems_<ID> y public/outputs/<ID> de sesiones anteriores.
+Además, al procesar un nuevo enlace o archivo, se borra la separación anterior para evitar ocupar espacio innecesariamente.
+🛠️ Problemas Comunes
+Opción 1: Usando Docker Compose
+Contenedor no arranca:
 
-Espera unos segundos (depende de la duración).
+Verifica los logs del contenedor para identificar errores:
 
-Aparecerán dos reproductores <audio> para:
-Voz
-Instrumentos
+bash
+Copiar
+docker-compose logs -f
+Permisos de Volúmenes:
 
-El campo de URL se limpia de inmediato tras enviar.
+Asegúrate de que las carpetas public/outputs y uploads tienen los permisos adecuados para que el contenedor pueda escribir en ellas.
+Opción 2: Instalación Manual
+Numpy/TensorFlow:
 
-### Limpieza de archivos
+Asegúrate de que numpy<2 está instalado para evitar conflictos con TensorFlow.
+ffmpeg no encontrado:
 
-Cada vez que inicias el servidor (npm start), se ejecuta un script que borra las carpetas stems_<ID> y public/outputs/<ID> que hayan quedado de sesiones anteriores.
-Además, cada vez que ingresas un nuevo link, se borra la separación anterior para no llenar tu disco.
+Verifica que ffmpeg está instalado y en el PATH:
 
-### Problemas comunes
+bash
+Copiar
+which ffmpeg
+Permisos de scripts en Windows:
 
-Numpy/TensorFlow: Asegúrate de que numpy<2 para evitar el error "A module that was compiled using NumPy 1.x...".
+Ejecuta PowerShell con permisos de administrador y ajusta la política de ejecución si es necesario:
 
-ffmpeg no encontrado: Verifica que esté en tu PATH (where ffmpeg en Windows, which ffmpeg en Linux/macOS).
+powershell
+Copiar
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+🔄 Actualizaciones y Mantenimiento
+Actualizar la Imagen Docker
+Si realizas cambios en el código o las dependencias, reconstruye la imagen Docker:
 
-Permisos de scripts en Windows: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass antes de activar el venv.
+bash
+Copiar
+docker build --no-cache -t myaudiosplitter .
+Luego, detén y elimina el contenedor existente, y ejecuta uno nuevo:
+
+bash
+Copiar
+docker-compose down
+docker-compose up -d
+Reutilizar el Contenedor Docker Compose
+Para reiniciar tu contenedor sin eliminarlo cada vez, sigue estos pasos:
+
+Detener los Servicios:
+
+powershell
+Copiar
+docker-compose stop
+Iniciar los Servicios Detenidos:
+
+powershell
+Copiar
+docker-compose start
+Notas para Usuarios de Windows (PowerShell):
+
+powershell
+Copiar
+docker-compose stop
+docker-compose start
+Actualizar Dependencias de Python
+Dentro del contenedor Docker, puedes actualizar las dependencias de Python si es necesario:
+
+bash
+Copiar
+docker exec -it myaudiosplitter-container /bin/bash
+pip install --upgrade pip setuptools wheel
+exit
