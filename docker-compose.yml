@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   audiosplitter:
-    image: myaudiosplitter
+    build: .
     container_name: myaudiosplitter-container
     ports:
       - "3000:3000"
     volumes:
-      - ./public/outputs:/app/public/outputs
-      - ./uploads:/app/uploads
+      - .:/app
+      - /app/node_modules
     restart: unless-stopped

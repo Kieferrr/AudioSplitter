@@ -46,17 +46,16 @@ cd TU-REPOSITORIO
 
 Asegúrate de tener un archivo docker-compose.yml en la raíz de tu proyecto con el siguiente contenido:
 
-version: '3.8'
 
 services:
   audiosplitter:
-    image: myaudiosplitter
+    build: .
     container_name: myaudiosplitter-container
     ports:
       - "3000:3000"
     volumes:
-      - ./public/outputs:/app/public/outputs
-      - ./uploads:/app/uploads
+      - .:/app
+      - /app/node_modules
     restart: unless-stopped
 
 #### 3. Construir la Imagen Docker (si aún no lo has hecho)
