@@ -1,4 +1,4 @@
-# Audio Splitter (Demo)
+# Audio Splitter
 
 Este proyecto permite **separar** la voz y los instrumentos de una canción o video de YouTube.  
 Está basado en:  
