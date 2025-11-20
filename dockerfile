@@ -1,4 +1,4 @@
-# Usar una imagen base oficial de Python 3.9 (slim para reducir el tamaño)
+# Usar una imagen base oficial de Python 3.10 (slim para reducir el tamaño)
 FROM python:3.10-slim
 
 # Establecer variables de entorno para evitar prompts interactivos durante la instalación de paquetes
@@ -31,6 +31,9 @@ RUN apt-get update && \
     # Actualizar pip, setuptools y wheel con la opción --break-system-packages
     python3 -m pip install --upgrade pip setuptools wheel --verbose --break-system-packages \
     && \
+    # Instalar yt-dlp para la descarga de YouTube
+    python3 -m pip install yt-dlp \
+    && \
     # Limpiar el caché de apt para reducir el tamaño de la imagen
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -38,25 +41,33 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copiar los archivos de dependencias de Node.js
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* ./ 
 
 # Instalar dependencias de Node.js
 RUN npm install || { echo "Fallo al instalar dependencias de Node.js"; exit 1; }
 
 # Copiar el archivo de dependencias de Python
-COPY requirements.txt ./
+COPY requirements.txt ./ 
+
+COPY ./cookies.txt /app/cookies.txt
 
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt || { echo "Fallo al instalar dependencias de Python"; exit 1; }
 
 # Copiar el resto del código de la aplicación
-COPY . .
+COPY . . 
 
 # Crear las carpetas necesarias
 RUN mkdir -p public/outputs uploads
 
 # Exponer el puerto que usa el servidor (ajústalo si es necesario)
-EXPOSE 3000
+EXPOSE 8080
+
+# Copiar las credenciales de GCP al contenedor
+COPY ./absolute-text-478800-r0-349a263c5e71.json /app/service-account-file.json
+
+# Establecer la variable de entorno para GCP
+ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-file.json"
 
 # (Opcional) Crear y cambiar a un usuario no root para mayor seguridad
 # RUN groupadd -r appuser && useradd -r -g appuser appuser

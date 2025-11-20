@@ -463,8 +463,8 @@
 
       // Mostrar mensaje de estado con clase de alerta de éxito
       statusDiv.innerHTML = `<div class="alert alert-success" role="alert">
-        <strong>${data.message}</strong>
-      </div>`;
+      <strong>${data.message}</strong>
+    </div>`;
 
       // Limpiar los resultados anteriores y el estado previo
       cleanupAudio();
@@ -645,8 +645,8 @@
         // Ocultar el spinner y mostrar el error en los resultados
         spinner.classList.add('d-none');
         statusDiv.innerHTML = `<div class="alert alert-danger" role="alert">
-          <strong>Error:</strong> ${err.message}
-        </div>`;
+        <strong>Error:</strong> ${err.message}
+      </div>`;
       }
     });
 
@@ -678,8 +678,8 @@
         // Ocultar el spinner y mostrar el error en los resultados
         spinner.classList.add('d-none');
         statusDiv.innerHTML = `<div class="alert alert-danger" role="alert">
-          <strong>Error:</strong> ${err.message}
-        </div>`;
+        <strong>Error:</strong> ${err.message}
+      </div>`;
       }
     });
 
@@ -783,6 +783,7 @@
       Howler.volume(volume);
     });
   </script>
+
 </body>
 
 </html>

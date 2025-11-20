@@ -8,11 +8,16 @@ const ytdlp = require('yt-dlp-exec');
 const multer = require('multer');
 const winston = require('winston');
 const cron = require('node-cron');
+const { Storage } = require('@google-cloud/storage');
+
+// Configuración de Google Cloud Storage
+const storage = new Storage();
+const bucketName = 'example_audiospliter_v1'; // Cambia esto con el nombre de tu bucket en GCP
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 8080;
 
-// Configuración de winston
+// Configuración de winston (registro de logs)
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -34,7 +39,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Configuración de Multer para manejar subidas de archivos
 const upload = multer({
-  dest: 'uploads/',
+  dest: 'uploads/', // Esta carpeta ya no se usará de manera persistente
   limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'video/mp4'];
@@ -46,88 +51,27 @@ const upload = multer({
   }
 });
 
-/**
- * Función para limpiar la carpeta public/outputs
- */
-async function cleanOutputs() {
-  const outputsDir = path.join(__dirname, 'public', 'outputs');
-  try {
-    await fs.emptyDir(outputsDir);
-    logger.info(`Carpeta ${outputsDir} ha sido limpiada.`);
-  } catch (err) {
-    logger.error(`Error al limpiar la carpeta ${outputsDir}: ${err.message}`);
-  }
+// Función para subir archivos a GCP
+async function uploadToGCP(filePath, randomId) {
+  const bucket = storage.bucket(bucketName);
+  const destination = `audios/${randomId}.mp3`; // Subir el archivo MP3 con un nombre único
+  await bucket.upload(filePath, { destination });
+  logger.info(`Archivo subido a GCP: ${destination}`);
+  return destination; // Retorna el nombre del archivo en GCP
+}
+
+// Función para descargar archivos desde GCP
+async function downloadFromGCP(fileName, randomId) {
+  const bucket = storage.bucket(bucketName);
+  const destPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
+  await bucket.file(fileName).download({ destination: destPath });
+  logger.info(`Archivo descargado de GCP: ${destPath}`);
+  return destPath; // Retorna la ruta de destino donde se descargó el archivo
 }
 
 /**
- * Función de limpieza para una solicitud específica.
- * Borra las carpetas stems_<ID> y public/outputs/<ID>.
- * @param {string} randomId 
+ * Ruta para procesar URLs de YouTube
  */
-function cleanupSeparacion(randomId) {
-  try {
-    // Carpeta stems_<randomId>
-    const stemsDir = path.join(__dirname, `stems_${randomId}`);
-    if (fs.existsSync(stemsDir)) {
-      fs.rmSync(stemsDir, { recursive: true, force: true });
-      logger.info(`Borrada carpeta ${stemsDir}`);
-    }
-
-    // Carpeta public/outputs/<randomId>
-    const publicOutputDir = path.join(__dirname, 'public', 'outputs', randomId);
-    if (fs.existsSync(publicOutputDir)) {
-      fs.rmSync(publicOutputDir, { recursive: true, force: true });
-      logger.info(`Borrada carpeta ${publicOutputDir}`);
-    }
-  } catch (err) {
-    logger.error(`Error al limpiar separaciones para ID ${randomId}: ${err.message}`);
-  }
-}
-
-/**
- * Limpia las carpetas en public/outputs que sean mayores a 24 horas.
- */
-async function cleanOldOutputs() {
-  const outputsDir = path.join(__dirname, 'public', 'outputs');
-  try {
-    const folders = await fs.readdir(outputsDir);
-    const now = Date.now();
-    const expirationTime = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
-
-    for (const folder of folders) {
-      const folderPath = path.join(outputsDir, folder);
-      const stats = await fs.stat(folderPath);
-      const modifiedTime = new Date(stats.mtime).getTime();
-
-      if (now - modifiedTime > expirationTime) {
-        await fs.remove(folderPath);
-        logger.info(`Carpeta eliminada por antigüedad: ${folderPath}`);
-      }
-    }
-  } catch (err) {
-    logger.error(`Error durante la limpieza de outputs: ${err.message}`);
-  }
-}
-
-// Programar la tarea para que se ejecute cada hora (opcional)
-cron.schedule('0 * * * *', () => {
-  logger.info('Iniciando tarea de limpieza de outputs antiguos...');
-  cleanOldOutputs();
-});
-
-/**
- * Obtener el nombre del archivo sin la extensión
- * @param {string} filename 
- * @returns {string}
- */
-function getFileNameWithoutExt(filename) {
-  return path.parse(filename).name;
-}
-
-// Rutas para procesar URLs de YouTube y subir archivos
-// Asegúrate de incluir las rutas actualizadas con las mejoras previas
-
-// Ejemplo de ruta para procesar URLs de YouTube
 app.post('/process-url', async (req, res) => {
   try {
     const youtubeUrl = req.body.youtubeUrl;
@@ -147,7 +91,8 @@ app.post('/process-url', async (req, res) => {
         output: inputAudioPath,
         extractAudio: true,
         audioFormat: 'mp3',
-        audioQuality: '0'
+        audioQuality: '0',
+        cookies: '/app/cookies.txt'  // Ruta al archivo de cookies en el contenedor
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
@@ -155,91 +100,29 @@ app.post('/process-url', async (req, res) => {
       return res.status(500).send('Error al descargar el audio de YouTube');
     }
 
-    // Ejecutar Spleeter mediante separar.py
+    // Subir el archivo descargado a Google Cloud Storage
+    const audioFileName = await uploadToGCP(inputAudioPath, randomId);
+
+    // Descargar el archivo desde GCP para procesarlo
+    const downloadPath = await downloadFromGCP(audioFileName, randomId);
+
+    // Ejecutar Spleeter para separar el audio
     const pythonScriptPath = path.join(__dirname, 'separar.py');
     logger.info('Ejecutando separación de audio...');
-    exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, (error, stdout, stderr) => {
+    exec(`python "${pythonScriptPath}" "${downloadPath}" "${randomId}"`, (error, stdout, stderr) => {
       logger.info('--- SPLITTER STDOUT ---\n' + stdout);
       logger.info('--- SPLITTER STDERR ---\n' + stderr);
 
       if (error) {
         logger.error(`Error al ejecutar Spleeter: ${error.message}`);
-        // Limpieza en caso de error
-        cleanupSeparacion(randomId);
-        // Borrar archivo de audio descargado
-        if (fs.existsSync(inputAudioPath)) {
-          fs.unlinkSync(inputAudioPath);
-          logger.info(`Archivo de audio descargado borrado: ${inputAudioPath}`);
-        }
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // Buscar carpeta stems_<randomId>
-      const stemsDir = path.join(__dirname, `stems_${randomId}`);
-      if (!fs.existsSync(stemsDir)) {
-        // Limpieza en caso de fallo
-        cleanupSeparacion(randomId);
-        // Borrar archivo de audio descargado
-        if (fs.existsSync(inputAudioPath)) {
-          fs.unlinkSync(inputAudioPath);
-          logger.info(`Archivo de audio descargado borrado: ${inputAudioPath}`);
-        }
-        return res.status(500).send('No se generaron archivos de salida');
-      }
+      // Generar las URLs de los archivos separados (suponiendo que están en /public/outputs/randomId/)
+      const resultUrls = ['vocals.wav', 'drums.wav', 'bass.wav'].map(file => `/outputs/${randomId}/${file}`);
 
-      // Spleeter suele crear subcarpeta con el nombre base del archivo
-      const baseName = path.parse(inputAudioPath).name;
-      let finalStemsFolder = path.join(stemsDir, baseName);
-      if (!fs.existsSync(finalStemsFolder)) {
-        finalStemsFolder = stemsDir;
-      }
-
-      // Copiar .wav a public/outputs/<randomId>
-      const publicOutputDir = path.join(__dirname, 'public', 'outputs', randomId);
-      try {
-        if (!fs.existsSync(publicOutputDir)) {
-          fs.mkdirSync(publicOutputDir, { recursive: true });
-          logger.info(`Creada carpeta de salida pública: ${publicOutputDir}`);
-        }
-
-        const files = fs.readdirSync(finalStemsFolder)
-          .filter(f => f.endsWith('.wav') || f.endsWith('.mp3'));
-        const resultUrls = [];
-        for (const file of files) {
-          const sourcePath = path.join(finalStemsFolder, file);
-          const destPath = path.join(publicOutputDir, file);
-          fs.copyFileSync(sourcePath, destPath);
-          logger.info(`Archivo copiado: ${sourcePath} -> ${destPath}`);
-          // URLs públicas
-          resultUrls.push(`/outputs/${randomId}/${file}`);
-        }
-
-        // Borrar mp3 original
-        if (fs.existsSync(inputAudioPath)) {
-          fs.unlinkSync(inputAudioPath);
-          logger.info(`Archivo de audio original borrado: ${inputAudioPath}`);
-        }
-
-        // Borrar la carpeta de stems después de copiar los archivos
-        fs.rmSync(stemsDir, { recursive: true, force: true });
-        logger.info(`Separación completada y carpeta de stems borrada para ID: ${randomId}`);
-
-        // Responder al frontend con información de los archivos generados
-        res.json({
-          message: 'Separación completada',
-          files: resultUrls
-        });
-      } catch (copyError) {
-        logger.error(`Error al copiar los archivos de stems: ${copyError.message}`);
-        // Limpieza en caso de error
-        cleanupSeparacion(randomId);
-        // Borrar archivo de audio descargado
-        if (fs.existsSync(inputAudioPath)) {
-          fs.unlinkSync(inputAudioPath);
-          logger.info(`Archivo de audio descargado borrado: ${inputAudioPath}`);
-        }
-        return res.status(500).send('Error al procesar los archivos de salida');
-      }
+      // Si todo fue exitoso, responder con la URL de los archivos generados
+      res.json({ message: 'Separación completada', files: resultUrls });
     });
   } catch (err) {
     logger.error(`Error en /process-url: ${err.message}`);
@@ -247,114 +130,40 @@ app.post('/process-url', async (req, res) => {
   }
 });
 
-// Ejemplo de ruta para subir archivos
-app.post('/upload-file', upload.single('audioFile'), (req, res) => {
+/**
+ * Ruta para subir archivos
+ */
+app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
   try {
     if (!req.file) {
       logger.warn('No se subió ningún archivo.');
       return res.status(400).send('No se subió ningún archivo.');
     }
 
-    // Obtener el nombre de la canción (sin extensión)
-    const originalFileName = req.file.originalname;
-    const songTitle = getFileNameWithoutExt(originalFileName);
-
-    // Generar nuevo randomId
+    // Subir el archivo a Google Cloud Storage
     const randomId = Date.now().toString();
-
-    // Mover el archivo subido a una ubicación permanente
     const uploadedFilePath = req.file.path;
-    const originalExtension = path.extname(req.file.originalname).toLowerCase();
-    const newFileName = `uploaded_audio_${randomId}${originalExtension}`;
-    const newFilePath = path.join(__dirname, newFileName);
-    fs.renameSync(uploadedFilePath, newFilePath);
-    logger.info(`Archivo subido movido a: ${newFilePath}`);
+    const audioFileName = await uploadToGCP(uploadedFilePath, randomId);
 
-    // Ejecutar Spleeter mediante separar.py
+    // Descargar el archivo desde GCP para procesarlo
+    const downloadPath = await downloadFromGCP(audioFileName, randomId);
+
+    // Ejecutar Spleeter para separar el audio
     const pythonScriptPath = path.join(__dirname, 'separar.py');
-    logger.info('Ejecutando separación de audio...');
-    exec(`python "${pythonScriptPath}" "${newFilePath}" "${randomId}"`, (error, stdout, stderr) => {
+    exec(`python "${pythonScriptPath}" "${downloadPath}" "${randomId}"`, (error, stdout, stderr) => {
       logger.info('--- SPLITTER STDOUT ---\n' + stdout);
       logger.info('--- SPLITTER STDERR ---\n' + stderr);
 
       if (error) {
         logger.error(`Error al ejecutar Spleeter: ${error.message}`);
-        // Limpieza en caso de error
-        cleanupSeparacion(randomId);
-        // Borrar archivo subido
-        if (fs.existsSync(newFilePath)) {
-          fs.unlinkSync(newFilePath);
-          logger.info(`Archivo subido borrado: ${newFilePath}`);
-        }
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // Buscar carpeta stems_<randomId>
-      const stemsDir = path.join(__dirname, `stems_${randomId}`);
-      if (!fs.existsSync(stemsDir)) {
-        // Limpieza en caso de fallo
-        cleanupSeparacion(randomId);
-        // Borrar archivo subido
-        if (fs.existsSync(newFilePath)) {
-          fs.unlinkSync(newFilePath);
-          logger.info(`Archivo subido borrado: ${newFilePath}`);
-        }
-        return res.status(500).send('No se generaron archivos de salida');
-      }
+      // Generar las URLs de los archivos separados (suponiendo que están en /public/outputs/randomId/)
+      const resultUrls = ['vocals.wav', 'drums.wav', 'bass.wav'].map(file => `/outputs/${randomId}/${file}`);
 
-      // Spleeter suele crear subcarpeta con el nombre base del archivo
-      const baseName = path.parse(newFilePath).name;
-      let finalStemsFolder = path.join(stemsDir, baseName);
-      if (!fs.existsSync(finalStemsFolder)) {
-        finalStemsFolder = stemsDir;
-      }
-
-      // Copiar .wav a public/outputs/<randomId>
-      const publicOutputDir = path.join(__dirname, 'public', 'outputs', randomId);
-      try {
-        if (!fs.existsSync(publicOutputDir)) {
-          fs.mkdirSync(publicOutputDir, { recursive: true });
-          logger.info(`Creada carpeta de salida pública: ${publicOutputDir}`);
-        }
-
-        const files = fs.readdirSync(finalStemsFolder)
-          .filter(f => f.endsWith('.wav') || f.endsWith('.mp3'));
-        const resultUrls = [];
-        for (const file of files) {
-          const sourcePath = path.join(finalStemsFolder, file);
-          const destPath = path.join(publicOutputDir, file);
-          fs.copyFileSync(sourcePath, destPath);
-          logger.info(`Archivo copiado: ${sourcePath} -> ${destPath}`);
-          // URLs públicas
-          resultUrls.push(`/outputs/${randomId}/${file}`);
-        }
-
-        // Borrar archivo subido original
-        if (fs.existsSync(newFilePath)) {
-          fs.unlinkSync(newFilePath);
-          logger.info(`Archivo subido borrado: ${newFilePath}`);
-        }
-
-        // Borrar la carpeta de stems después de copiar los archivos
-        fs.rmSync(stemsDir, { recursive: true, force: true });
-        logger.info(`Separación completada y carpeta de stems borrada para ID: ${randomId}`);
-
-        // Responder al frontend con información de los archivos generados
-        res.json({
-          message: `Separación completada: ${songTitle}`,
-          files: resultUrls
-        });
-      } catch (copyError) {
-        logger.error(`Error al copiar los archivos de stems: ${copyError.message}`);
-        // Limpieza en caso de error
-        cleanupSeparacion(randomId);
-        // Borrar archivo subido
-        if (fs.existsSync(newFilePath)) {
-          fs.unlinkSync(newFilePath);
-          logger.info(`Archivo subido borrado: ${newFilePath}`);
-        }
-        return res.status(500).send('Error al procesar los archivos de salida');
-      }
+      // Si todo fue exitoso, responder con la URL de los archivos generados
+      res.json({ message: 'Separación completada', files: resultUrls });
     });
   } catch (err) {
     logger.error(`Error en /upload-file: ${err.message}`);
@@ -362,30 +171,32 @@ app.post('/upload-file', upload.single('audioFile'), (req, res) => {
   }
 });
 
-// Implementar limpieza al iniciar la aplicación
-async function initializeApp() {
-  await cleanOutputs();
-  logger.info('Aplicación inicializada y outputs limpiados.');
+// Función de limpieza para eliminar archivos antiguos en GCP
+async function cleanOldOutputs() {
+  const now = Date.now();
+  const expirationTime = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
+
+  try {
+    const [files] = await storage.bucket(bucketName).getFiles();
+    for (const file of files) {
+      const lastModified = new Date(file.metadata.updated).getTime();
+      if (now - lastModified > expirationTime) {
+        await file.delete();
+        logger.info(`Archivo borrado por antigüedad: ${file.name}`);
+      }
+    }
+  } catch (err) {
+    logger.error(`Error durante la limpieza de archivos en GCP: ${err.message}`);
+  }
 }
 
-initializeApp();
-
-// Manejar señales para limpieza al detener la aplicación
-process.on('SIGINT', () => {
-  logger.info('Recibida señal SIGINT. Iniciando limpieza y apagando...');
-  cleanOutputs().then(() => {
-    process.exit(0);
-  });
+// Programar la tarea para que se ejecute cada hora (opcional)
+cron.schedule('0 * * * *', () => {
+  logger.info('Iniciando tarea de limpieza de outputs antiguos...');
+  cleanOldOutputs();
 });
 
-process.on('SIGTERM', () => {
-  logger.info('Recibida señal SIGTERM. Iniciando limpieza y apagando...');
-  cleanOutputs().then(() => {
-    process.exit(0);
-  });
-});
-
-// Iniciar el servidor
+// Iniciar servidor
 app.listen(PORT, () => {
   logger.info(`Servidor escuchando en http://localhost:${PORT}`);
 });

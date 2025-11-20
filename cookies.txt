@@ -1,0 +1,24 @@
+# Netscape HTTP Cookie File
+.youtube.com    TRUE    /   FALSE   1798012710    __Secure-1PAPISID   Iq-8wUUh_P5Pke4X/ALiNhm6jQJ5-ovSGo
+.youtube.com    TRUE    /   FALSE   1798012710    __Secure-1PSID    g.a0003giDkciRqq2YWpHUZfKybaQUtfbhb48MpOyv6OeX8OeaUVKKu8NBs1AWF3JMZJ5vek-zEgACgYKAeUSARQSFQHGX2MiuVnCeKQCLY8O-U_a3mYqKhoVAUF8yKr5g7_h-cZCve6cVwsuBUwf0076
+.youtube.com    TRUE    /   FALSE   1795140758    __Secure-1PSIDCC    AKEyXzVj8-U2TyTErt45rJGC6nd70axVWjp6LgoAc2vlLI52TUioJMPNbC7nFzDDFfH3y5Hi7Rc
+.youtube.com    TRUE    /   FALSE   1795140758    __Secure-1PSIDTS    sidts-CjEBwQ9iI0CeGMsEKm6Mr-bCaAtkxiRsqz9tYHtj2W44PrXiCxFYQzvmjyq8HcOgEdd2EAA
+.youtube.com    TRUE    /   FALSE   1798012710    __Secure-3PAPISID   Iq-8wUUh_P5Pke4X/ALiNhm6jQJ5-ovSGo
+.youtube.com    TRUE    /   FALSE   1798012710    __Secure-3PSID    g.a0003giDkciRqq2YWpHUZfKybaQUtfbhb48MpOyv6OeX8OeaUVKKMUpZZddKeQ4marIslzq-xAACgYKAecSARQSFQHGX2MiK5EOj_9BW1rvYUxEKHvdHRoVAUF8yKp3lWpJ-3_YAkTluyYhfbyR0076
+.youtube.com    TRUE    /   FALSE   1795140758    __Secure-3PSIDCC    AKEyXzWjhUk46rM-MzQz5ewdFz21JRsAJcGLGkxv3-JEejFOfiUOo8zozibIAxZ8sH8Q5pgr_hA
+.youtube.com    TRUE    /   FALSE   1795140758    __Secure-3PSIDTS    sidts-CjEBwQ9iI0CeGMsEKm6Mr-bCaAtkxiRsqz9tYHtj2W44PrXiCxFYQzvmjyq8HcOgEdd2EAA
+.youtube.com    TRUE    /   FALSE   1794164762    _ga    GA1.1.1815546790.1701060946
+.youtube.com    TRUE    /   FALSE   1776740560    _ga_03426WHCYH    GS1.2.1742180560.1.0.1742180560.0.0.0
+.youtube.com    TRUE    /   FALSE   1792311405    _ga_5JSYX2Q357    GS2.1.s1757751369$o1$g1$t1757751405$j24$l0$h0
+.youtube.com    TRUE    /   FALSE   1776740560    _ga_BCWYVPDKQJ    GS1.1.1742180560.1.0.1742180560.0.0.0
+.youtube.com    TRUE    /   FALSE   1794165989    _ga_VCGEPY40VB    GS2.1.s1759604754$o6$g1$t1759605989$j60$l0$h0
+.youtube.com    TRUE    /   FALSE   1767377847    _gcl_au    1.1.1830713435.1759601847
+.youtube.com    TRUE    /   FALSE   1798012710    APISID    cpQICgQ0_ZS7jGzs/Ac6CV_mLS8mM4W1AX
+.youtube.com    TRUE    /   FALSE   1798012710    HSID    ARXzF3xNK6r1E0RqC
+.youtube.com    TRUE    /   FALSE   1795130046    LOGIN_INFO    AFmmF2swRQIgdieW1uHDjm0EAUFpM9XrpdfCcnqUs9W6eQLZEU3q9ggCIQCmQhqtQa-9Tb4EpdogTYrfy-HM4A_e3PN1VjJc0G1Hyw:QUQ3MjNmejNfQXBuRkl3VjZtRkpmOXVteWt5YVExQ0JQN0hOZ3loeEI5cjEzWElUcTJNY09LUDNqNk9BSDcxTTJXS2JEYndMc2J1Uk1IZ1E4bHFBSkRnbUNaa3VaMkJYbmVFMmtDVm1ZREFsV2VWU0I4WmZ1Nk1KbEdHWkR1UnlDamg5ZFpfUVJPa3ZJNlBxbVpFWndxVHlRTXNwX1hRdkl3
+.youtube.com    TRUE    /   FALSE   1779408135    NID    526=SLVNgmdrC9-xPXBWxcp2IrlaoQqKYkVvKq25OTe8vlHbnnniiCHF3CwQG4_9JZyYCEVraQ0hBoPL0Wk61mf6iN2mlB3GVfithRKMmkUl0xM_v-1JZ3w8l41YsB0FsFRbGMtgv9pW9ER0Sk12IObOVL9HuGRsv6NsMupi2wxFXb7RTlvVmNVpng3OtbqiLuNDMhDwWVMyRdUyNspnO4cClRbtTdr60wqf6i7rJ6f0
+.youtube.com    TRUE    /   FALSE   1798164613    PREF    f6=40000400&f7=4140&gl=CL&tz=America.Santiago&repeat=NONE&autoplay=true&f5=30000
+.youtube.com    TRUE    /   FALSE   1798012710    SAPISID    Iq-8wUUh_P5Pke4X/ALiNhm6jQJ5-ovSGo
+.youtube.com    TRUE    /   FALSE   1798012710    SID    g.a0003giDkciRqq2YWpHUZfKybaQUtfbhb48MpOyv6OeX8OeaUVKKy-_naWEy1be5CTrz3PycrAACgYKAW8SARQSFQHGX2Mi1e1XxLUCMO_63xUshAQSmhoVAUF8yKp_gw8gaualt4CjUPQFu5Hj0076
+.youtube.com    TRUE    /   FALSE   1795140758    SIDCC    AKEyXzU3WZoZtJDKMs8GfWoD93f5Li5WsOuGZ9P8nazTTvz5UhALr-1aLtk633IRn85vZBDBnKhr
+.youtube.com    TRUE    /   FALSE   1798012710    SSID    AT9lMiPUCajzetgso
