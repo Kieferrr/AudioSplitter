@@ -63,7 +63,7 @@ RUN mkdir -p public/outputs uploads
 
 # Descargar el archivo JSON de Google Cloud Storage
 RUN pip install google-cloud-storage
-RUN python -c "from google.cloud import storage; client = storage.Client(); bucket = client.bucket('absolutetext'); blob = bucket.blob('absolute-text-478800-r0-349a263c5e71.json'); blob.download_to_filename('/app/service-account-file.json');"
+RUN python -c "from google.cloud import storage; client = storage.Client(project='absolute-text-478800-r0'); bucket = client.bucket('absolutetext'); blob = bucket.blob('absolute-text-478800-r0-349a263c5e71.json'); blob.download_to_filename('/app/service-account-file.json');"
 
 # Establecer la variable de entorno para GCP
 ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-file.json"
