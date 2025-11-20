@@ -1,12 +1,37 @@
-# separar.py
 import sys
 import os
 import subprocess
+from google.cloud import storage
 
 """
 Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]
-Genera una carpeta "stems_<randomId>/" con los stems resultantes.
+Genera una carpeta "stems_<randomId>/" con los stems resultantes y los sube al bucket de GCP.
 """
+
+def download_json_from_gcs(bucket_name, blob_name, destination_file_name):
+    """Descargar archivo JSON desde GCS"""
+    client = storage.Client()
+
+    # Obtén el bucket
+    bucket = client.get_bucket(bucket_name)
+
+    # Obtén el blob (el archivo dentro del bucket)
+    blob = bucket.blob(blob_name)
+
+    # Descarga el archivo
+    blob.download_to_filename(destination_file_name)
+    print(f"{blob_name} descargado a {destination_file_name}")
+
+# Llama a la función para descargar el archivo desde GCS
+download_json_from_gcs('absolutetext', 'absolute-text-478800-r0-349a263c5e71.json', 'service-account-file.json')
+
+def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
+    """Sube un archivo al bucket de Google Cloud Storage."""
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(local_file_path)
+    print(f"Archivo {local_file_path} subido a {bucket_name}/{destination_blob_name}.")
 
 def main():
     if len(sys.argv) < 3:
@@ -40,6 +65,16 @@ def main():
     except subprocess.CalledProcessError as e:
         print("Error al ejecutar Spleeter:", e)
         sys.exit(1)
+
+    # Subir los archivos generados al bucket de GCP
+    bucket_name = 'example_audiospliter_v1'  # Nombre de tu bucket en GCP
+
+    # Iterar sobre los archivos generados y subirlos
+    for stem_file in os.listdir(output_dir):
+        if stem_file.endswith(".wav"):
+            local_file_path = os.path.join(output_dir, stem_file)
+            destination_blob_name = f"audios/{random_id}/{stem_file}"  # Ruta dentro del bucket
+            upload_to_gcp(local_file_path, bucket_name, destination_blob_name)
 
 if __name__ == '__main__':
     main()
