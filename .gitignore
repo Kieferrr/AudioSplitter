@@ -54,4 +54,3 @@ docker-compose.override.yml
 pretrained_models/
 
 absolute-text-478800-r0-349a263c5e71.json
-
