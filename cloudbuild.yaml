@@ -1,0 +1,15 @@
+steps:
+  # Paso 1: Construir la imagen de Docker
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/audiosplitter', '.']
+
+  # Paso 2: Empujar la imagen a Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/audiosplitter']
+
+  # Paso 3: Desplegar la imagen en Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args: ['gcloud', 'run', 'deploy', 'audiosplitter', '--image', 'gcr.io/$PROJECT_ID/audiosplitter', '--platform', 'managed', '--region', 'us-central1', '--allow-unauthenticated']
+
+# Opcional: Definir variables del entorno
+timeout: '1200s'  # El tiempo máximo para ejecutar el build
