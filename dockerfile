@@ -1,5 +1,5 @@
 # Usar una imagen base oficial de Python 3.9 (slim para reducir el tamaño)
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Establecer variables de entorno para evitar prompts interactivos durante la instalación de paquetes
 ENV DEBIAN_FRONTEND=noninteractive

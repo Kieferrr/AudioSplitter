@@ -5,6 +5,6 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - .:/app
-      - /app/node_modules
+      - ./public:/app/public
+      - ./uploads:/app/uploads
     restart: unless-stopped

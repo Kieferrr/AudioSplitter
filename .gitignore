@@ -49,3 +49,7 @@ Thumbs.db
 
 # Archivos generados por Docker
 docker-compose.override.yml
+
+# Ignorar modelos preentrenados
+pretrained_models/
+
