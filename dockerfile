@@ -34,6 +34,9 @@ RUN apt-get update && \
     # Instalar yt-dlp para la descarga de YouTube
     python3 -m pip install yt-dlp \
     && \
+    # Instalar spleeter para separar audios
+    python3 -m pip install spleeter \
+    && \
     # Limpiar el caché de apt para reducir el tamaño de la imagen
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -49,8 +52,6 @@ RUN npm install || { echo "Fallo al instalar dependencias de Node.js"; exit 1; }
 # Copiar el archivo de dependencias de Python
 COPY requirements.txt ./ 
 
-COPY ./cookies.txt /app/cookies.txt
-
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt || { echo "Fallo al instalar dependencias de Python"; exit 1; }
 
@@ -60,18 +61,15 @@ COPY . .
 # Crear las carpetas necesarias
 RUN mkdir -p public/outputs uploads
 
-# Exponer el puerto que usa el servidor (ajústalo si es necesario)
-EXPOSE 8080
-
-# Copiar las credenciales de GCP al contenedor
-COPY ./absolute-text-478800-r0-349a263c5e71.json /app/service-account-file.json
+# Descargar el archivo JSON de Google Cloud Storage
+RUN pip install google-cloud-storage
+RUN python -c "from google.cloud import storage; client = storage.Client(); bucket = client.bucket('absolutetext'); blob = bucket.blob('absolute-text-478800-r0-349a263c5e71.json'); blob.download_to_filename('/app/service-account-file.json');"
 
 # Establecer la variable de entorno para GCP
 ENV GOOGLE_APPLICATION_CREDENTIALS="/app/service-account-file.json"
 
-# (Opcional) Crear y cambiar a un usuario no root para mayor seguridad
-# RUN groupadd -r appuser && useradd -r -g appuser appuser
-# USER appuser
+# Exponer el puerto que usa el servidor (ajústalo si es necesario)
+EXPOSE 8080
 
 # Comando para iniciar la aplicación
 CMD ["npm", "start"]
