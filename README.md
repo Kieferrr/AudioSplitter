@@ -76,6 +76,8 @@ services:
 
 docker-compose build
 
+> Si despliegas en Cloud Run o usas GCP, define la variable de entorno `BUCKET_NAME` con el nombre del bucket donde quieras guardar copias de los stems. Si no la defines, la app seguirá funcionando guardando los resultados localmente dentro del contenedor.
+
 ### 4. Iniciar los Servicios con Docker Compose
 
 - En la raíz de tu proyecto, ejecuta:

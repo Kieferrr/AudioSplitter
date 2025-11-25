@@ -5,25 +5,9 @@ from google.cloud import storage
 
 """
 Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]
-Genera una carpeta "stems_<randomId>/" con los stems resultantes y los sube al bucket de GCP.
+Genera una carpeta "public/outputs/<randomId>/" con los stems resultantes.
+Si se define la variable de entorno BUCKET_NAME, sube los stems al bucket de GCP.
 """
-
-def download_json_from_gcs(bucket_name, blob_name, destination_file_name):
-    """Descargar archivo JSON desde GCS"""
-    client = storage.Client()
-
-    # Obtén el bucket
-    bucket = client.get_bucket(bucket_name)
-
-    # Obtén el blob (el archivo dentro del bucket)
-    blob = bucket.blob(blob_name)
-
-    # Descarga el archivo
-    blob.download_to_filename(destination_file_name)
-    print(f"{blob_name} descargado a {destination_file_name}")
-
-# Llama a la función para descargar el archivo desde GCS
-download_json_from_gcs('absolutetext', 'absolute-text-478800-r0-349a263c5e71.json', 'service-account-file.json')
 
 def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
     """Sube un archivo al bucket de Google Cloud Storage."""
@@ -42,8 +26,8 @@ def main():
     random_id = sys.argv[2]
     stems = sys.argv[3] if len(sys.argv) > 3 else "5"  # Predeterminado a 5 stems
 
-    # Carpeta donde se almacenarán los stems
-    output_dir = f"stems_{random_id}"
+    # Carpeta donde se almacenarán los stems (servida por Express)
+    output_dir = os.path.join("public", "outputs", random_id)
 
     # Crear la carpeta si no existe
     if not os.path.exists(output_dir):
@@ -66,15 +50,19 @@ def main():
         print("Error al ejecutar Spleeter:", e)
         sys.exit(1)
 
-    # Subir los archivos generados al bucket de GCP
-    bucket_name = 'example_audiospliter_v1'  # Nombre de tu bucket en GCP
-
-    # Iterar sobre los archivos generados y subirlos
-    for stem_file in os.listdir(output_dir):
-        if stem_file.endswith(".wav"):
-            local_file_path = os.path.join(output_dir, stem_file)
-            destination_blob_name = f"audios/{random_id}/{stem_file}"  # Ruta dentro del bucket
-            upload_to_gcp(local_file_path, bucket_name, destination_blob_name)
+    # Subir los archivos generados al bucket de GCP si está configurado
+    bucket_name = os.environ.get("BUCKET_NAME")
+    if bucket_name:
+        for stem_file in os.listdir(output_dir):
+            if stem_file.endswith(".wav"):
+                local_file_path = os.path.join(output_dir, stem_file)
+                destination_blob_name = f"stems/{random_id}/{stem_file}"  # Ruta dentro del bucket
+                try:
+                    upload_to_gcp(local_file_path, bucket_name, destination_blob_name)
+                except Exception as exc:  # pylint: disable=broad-except
+                    print(f"No se pudo subir {stem_file} a GCP: {exc}")
+    else:
+        print("BUCKET_NAME no está definido; se omite la subida a GCP.")
 
 if __name__ == '__main__':
     main()

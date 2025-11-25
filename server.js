@@ -10,9 +10,9 @@ const winston = require('winston');
 const cron = require('node-cron');
 const { Storage } = require('@google-cloud/storage');
 
-// Configuración de Google Cloud Storage
-const storage = new Storage();
-const bucketName = 'example_audiospliter_v1'; // Cambia esto con el nombre de tu bucket en GCP
+// Configuración de Google Cloud Storage (opcional)
+const bucketName = process.env.BUCKET_NAME;
+const storage = bucketName ? new Storage() : null;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -29,6 +29,10 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'server.log' })
   ]
 });
+
+if (!bucketName) {
+  logger.warn('BUCKET_NAME no está definido; se omitirán las operaciones con GCP.');
+}
 
 // Middleware para parsear el cuerpo de las solicitudes
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -51,8 +55,12 @@ const upload = multer({
   }
 });
 
-// Función para subir archivos a GCP
+// Función opcional para subir archivos a GCP
 async function uploadToGCP(filePath, randomId) {
+  if (!storage || !bucketName) {
+    return null;
+  }
+
   const bucket = storage.bucket(bucketName);
   const destination = `audios/${randomId}.mp3`; // Subir el archivo MP3 con un nombre único
   await bucket.upload(filePath, { destination });
@@ -60,8 +68,12 @@ async function uploadToGCP(filePath, randomId) {
   return destination; // Retorna el nombre del archivo en GCP
 }
 
-// Función para descargar archivos desde GCP
+// Función opcional para descargar archivos desde GCP
 async function downloadFromGCP(fileName, randomId) {
+  if (!storage || !bucketName) {
+    return null;
+  }
+
   const bucket = storage.bucket(bucketName);
   const destPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
   await bucket.file(fileName).download({ destination: destPath });
@@ -100,16 +112,11 @@ app.post('/process-url', async (req, res) => {
       return res.status(500).send('Error al descargar el audio de YouTube');
     }
 
-    // Subir el archivo descargado a Google Cloud Storage
-    const audioFileName = await uploadToGCP(inputAudioPath, randomId);
-
-    // Descargar el archivo desde GCP para procesarlo
-    const downloadPath = await downloadFromGCP(audioFileName, randomId);
-
     // Ejecutar Spleeter para separar el audio
     const pythonScriptPath = path.join(__dirname, 'separar.py');
     logger.info('Ejecutando separación de audio...');
-    exec(`python "${pythonScriptPath}" "${downloadPath}" "${randomId}"`, (error, stdout, stderr) => {
+    const audioPathForProcessing = inputAudioPath;
+    exec(`python "${pythonScriptPath}" "${audioPathForProcessing}" "${randomId}"`, (error, stdout, stderr) => {
       logger.info('--- SPLITTER STDOUT ---\n' + stdout);
       logger.info('--- SPLITTER STDERR ---\n' + stderr);
 
@@ -118,8 +125,9 @@ app.post('/process-url', async (req, res) => {
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // Generar las URLs de los archivos separados (suponiendo que están en /public/outputs/randomId/)
-      const resultUrls = ['vocals.wav', 'drums.wav', 'bass.wav'].map(file => `/outputs/${randomId}/${file}`);
+      const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+      const stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
+      const resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
 
       // Si todo fue exitoso, responder con la URL de los archivos generados
       res.json({ message: 'Separación completada', files: resultUrls });
@@ -140,17 +148,12 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
       return res.status(400).send('No se subió ningún archivo.');
     }
 
-    // Subir el archivo a Google Cloud Storage
     const randomId = Date.now().toString();
     const uploadedFilePath = req.file.path;
-    const audioFileName = await uploadToGCP(uploadedFilePath, randomId);
-
-    // Descargar el archivo desde GCP para procesarlo
-    const downloadPath = await downloadFromGCP(audioFileName, randomId);
 
     // Ejecutar Spleeter para separar el audio
     const pythonScriptPath = path.join(__dirname, 'separar.py');
-    exec(`python "${pythonScriptPath}" "${downloadPath}" "${randomId}"`, (error, stdout, stderr) => {
+    exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, (error, stdout, stderr) => {
       logger.info('--- SPLITTER STDOUT ---\n' + stdout);
       logger.info('--- SPLITTER STDERR ---\n' + stderr);
 
@@ -159,8 +162,9 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // Generar las URLs de los archivos separados (suponiendo que están en /public/outputs/randomId/)
-      const resultUrls = ['vocals.wav', 'drums.wav', 'bass.wav'].map(file => `/outputs/${randomId}/${file}`);
+      const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+      const stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
+      const resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
 
       // Si todo fue exitoso, responder con la URL de los archivos generados
       res.json({ message: 'Separación completada', files: resultUrls });
@@ -173,6 +177,10 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
 
 // Función de limpieza para eliminar archivos antiguos en GCP
 async function cleanOldOutputs() {
+  if (!storage || !bucketName) {
+    return;
+  }
+
   const now = Date.now();
   const expirationTime = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
 
