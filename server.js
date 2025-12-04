@@ -31,6 +31,27 @@ const logger = winston.createLogger({
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+
+// 🔥 SOLUCIÓN DEFINITIVA PARA LOS ARCHIVOS 404 🔥
+// Esta ruta intercepta cualquier petición a /outputs/... y busca el archivo manualmente
+// sin importar qué tan profunda sea la carpeta que creó Spleeter.
+app.get('/outputs/*', (req, res) => {
+  // req.params[0] contiene todo lo que va después de /outputs/
+  // Ejemplo: "12345/tmp_audio_12345/vocals.wav"
+  const relativePath = req.params[0];
+  const fullPath = path.join(__dirname, 'public', 'outputs', relativePath);
+
+  res.sendFile(fullPath, (err) => {
+    if (err) {
+      logger.error(`Error enviando archivo ${fullPath}: ${err.message}`);
+      if (!res.headersSent) {
+        res.status(404).send('Archivo no encontrado');
+      }
+    }
+  });
+});
+
+// Servir el resto de archivos estáticos (css, js, index.html)
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({
@@ -47,7 +68,6 @@ const upload = multer({
 });
 
 // --- FUNCIÓN AUXILIAR: EL SABUESO DE ARCHIVOS ---
-// Busca archivos .wav en todas las subcarpetas recursivamente
 function findWavFilesRecursively(dir, fileList = []) {
   const files = fs.readdirSync(dir);
   files.forEach(file => {
@@ -73,27 +93,18 @@ app.post('/process-url', async (req, res) => {
     const randomId = Date.now().toString();
     logger.info(`Descargando audio de: ${youtubeUrl}`);
 
-    // Rutas de archivos
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
 
-    // --- SOLUCIÓN ERROR COOKIES (READ-ONLY) ---
+    // --- COOKIES ---
     let cookiesOriginalPath = '/secrets/cookies.txt';
-    if (!fs.existsSync(cookiesOriginalPath)) {
-      cookiesOriginalPath = '/app/cookies.txt';
-    }
-
+    if (!fs.existsSync(cookiesOriginalPath)) cookiesOriginalPath = '/app/cookies.txt';
     const cookiesTempPath = '/tmp/cookies.txt';
 
     if (fs.existsSync(cookiesOriginalPath)) {
       try {
         const cookieContent = fs.readFileSync(cookiesOriginalPath, 'utf8');
         fs.writeFileSync(cookiesTempPath, cookieContent, { mode: 0o666 });
-        logger.info(`Cookies regeneradas en: ${cookiesTempPath}`);
-      } catch (copyErr) {
-        logger.error(`Error preparando cookies: ${copyErr.message}`);
-      }
-    } else {
-      logger.warn('ADVERTENCIA: No se encontró el archivo cookies.txt original.');
+      } catch (copyErr) { logger.error(copyErr); }
     }
 
     try {
@@ -106,70 +117,50 @@ app.post('/process-url', async (req, res) => {
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
-      logger.error(`Error al descargar el audio: ${downloadError.message}`);
-      return res.status(500).send('Error al descargar el audio de YouTube. Revisa logs.');
+      logger.error(downloadError);
+      return res.status(500).send('Error descarga YT');
     }
 
     // Ejecutar Spleeter
     const pythonScriptPath = path.join(__dirname, 'separar.py');
-    logger.info('Ejecutando separación de audio...');
-
     const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
     exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
       logger.info('Python output:\n' + stdout);
-      // stderr en Python suele tener warnings, no necesariamente errores fatales
-      if (stderr) logger.warn('Python stderr (Warnings): ' + stderr);
-
+      if (stderr) logger.warn('Python stderr: ' + stderr);
       if (error) {
-        logger.error(`Error FATAL Spleeter: ${error.message}`);
-        return res.status(500).send('Error en la separación de audio');
+        logger.error(error);
+        return res.status(500).send('Error Spleeter');
       }
 
-      // --- LOGICA INFALIBLE PARA ENCONTRAR ARCHIVOS ---
+      // --- BÚSQUEDA Y RESPUESTA ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
 
       let allWavFiles = [];
       try {
-        // Usamos el "Sabueso" para buscar en profundidad
         if (fs.existsSync(outputDir)) {
           allWavFiles = findWavFilesRecursively(outputDir);
-        } else {
-          logger.error(`No existe el directorio de salida: ${outputDir}`);
         }
-      } catch (e) {
-        logger.error(`Error buscando archivos: ${e.message}`);
-      }
+      } catch (e) { logger.error(e); }
 
-      // Generar URLs públicas
-      let resultUrls = [];
+      // Generar URLs
       const publicPath = path.join(__dirname, 'public');
+      let resultUrls = [];
 
       if (bucketName) {
-        // Lógica Bucket (simplificada, asume que subiste los archivos con la misma estructura)
-        // Nota: Si usas bucket, asegúrate de que tu script Python devuelva las rutas del bucket o suba recursivamente.
-        // Por ahora, mantendremos la lógica local que es la que estás probando.
         resultUrls = allWavFiles.map(filePath => {
           const fileName = path.basename(filePath);
           return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
         });
       } else {
-        // Lógica Local
+        // Generamos la URL relativa que nuestra NUEVA RUTA 'app.get(/outputs/*)' va a capturar
         resultUrls = allWavFiles.map(filePath => {
-          // Convertimos la ruta absoluta del sistema (/app/public/outputs/...) 
-          // en una URL relativa para el navegador (/outputs/...)
-          // Reemplazamos backslashes por slashes normales para asegurar compatibilidad web
           let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
           return `/${relativePath}`;
         });
       }
 
-      logger.info(`Enviando ${resultUrls.length} archivos al frontend: ${JSON.stringify(resultUrls)}`);
-
-      if (resultUrls.length === 0) {
-        return res.status(500).send('Spleeter terminó, pero no se encontraron archivos .wav resultantes.');
-      }
-
+      logger.info(`Enviando archivos al frontend: ${JSON.stringify(resultUrls)}`);
       res.json({ message: 'Separación completada', files: resultUrls });
     });
 
@@ -189,33 +180,34 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
   const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
   exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, (error, stdout, stderr) => {
-    if (error) {
-      logger.error(error);
-      return res.status(500).send('Error splitter');
-    }
+    if (error) { logger.error(error); return res.status(500).send('Error splitter'); }
 
     const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
     let allWavFiles = [];
     try {
-      if (fs.existsSync(outputDir)) {
-        allWavFiles = findWavFilesRecursively(outputDir);
-      }
+      if (fs.existsSync(outputDir)) allWavFiles = findWavFilesRecursively(outputDir);
     } catch (e) { logger.error(e); }
 
     const publicPath = path.join(__dirname, 'public');
-    let resultUrls = allWavFiles.map(filePath => {
-      let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
-      return `/${relativePath}`;
-    });
+    let resultUrls = [];
+
+    if (bucketName) {
+      resultUrls = allWavFiles.map(filePath => {
+        const fileName = path.basename(filePath);
+        return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
+      });
+    } else {
+      resultUrls = allWavFiles.map(filePath => {
+        let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
+        return `/${relativePath}`;
+      });
+    }
 
     res.json({ message: 'Separación completada', files: resultUrls });
   });
 });
 
-// Limpieza
-cron.schedule('0 * * * *', () => {
-  logger.info('Tarea de limpieza ejecutada');
-});
+cron.schedule('0 * * * *', () => { logger.info('Tarea de limpieza ejecutada'); });
 
 app.listen(PORT, () => {
   logger.info(`Servidor escuchando en puerto ${PORT}`);
