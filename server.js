@@ -14,7 +14,7 @@ const { Storage } = require('@google-cloud/storage');
 // IMPORTANTE: Verifica que este nombre sea EXACTO al de tu consola de GCP.
 // He puesto 'example_audiosplitter_v1' (con doble T). 
 // Si el tuyo es con una T, cámbialo aquí.
-const bucketName = 'example_audiosplitter_v1';
+const bucketName = 'example_audiospliter_v1';
 const storage = new Storage();
 
 const app = express();
