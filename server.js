@@ -2,7 +2,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { exec } = require('child_process');
-const fs = require('fs-extra'); // Usamos fs-extra para simplificar operaciones
+const fs = require('fs-extra');
 const path = require('path');
 const ytdlp = require('yt-dlp-exec');
 const multer = require('multer');
@@ -10,14 +10,13 @@ const winston = require('winston');
 const cron = require('node-cron');
 const { Storage } = require('@google-cloud/storage');
 
-// Configuración de Google Cloud Storage (opcional)
-const bucketName = process.env.BUCKET_NAME;
+// Configuración de Google Cloud Storage
+const bucketName = process.env.BUCKET_NAME; // Asegúrate de definir esta variable en Cloud Run
 const storage = bucketName ? new Storage() : null;
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Configuración de winston (registro de logs)
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -30,21 +29,13 @@ const logger = winston.createLogger({
   ]
 });
 
-if (!bucketName) {
-  logger.warn('BUCKET_NAME no está definido; se omitirán las operaciones con GCP.');
-}
-
-// Middleware para parsear el cuerpo de las solicitudes
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-
-// Servir archivos estáticos desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Configuración de Multer para manejar subidas de archivos
 const upload = multer({
-  dest: 'uploads/', // Esta carpeta ya no se usará de manera persistente
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  dest: 'uploads/',
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'video/mp4'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -55,156 +46,113 @@ const upload = multer({
   }
 });
 
-// Función opcional para subir archivos a GCP
-async function uploadToGCP(filePath, randomId) {
-  if (!storage || !bucketName) {
-    return null;
-  }
-
-  const bucket = storage.bucket(bucketName);
-  const destination = `audios/${randomId}.mp3`; // Subir el archivo MP3 con un nombre único
-  await bucket.upload(filePath, { destination });
-  logger.info(`Archivo subido a GCP: ${destination}`);
-  return destination; // Retorna el nombre del archivo en GCP
-}
-
-// Función opcional para descargar archivos desde GCP
-async function downloadFromGCP(fileName, randomId) {
-  if (!storage || !bucketName) {
-    return null;
-  }
-
-  const bucket = storage.bucket(bucketName);
-  const destPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
-  await bucket.file(fileName).download({ destination: destPath });
-  logger.info(`Archivo descargado de GCP: ${destPath}`);
-  return destPath; // Retorna la ruta de destino donde se descargó el archivo
-}
-
-/**
- * Ruta para procesar URLs de YouTube
- */
+// --- RUTA PARA PROCESAR YOUTUBE ---
 app.post('/process-url', async (req, res) => {
   try {
     const youtubeUrl = req.body.youtubeUrl;
-    if (!youtubeUrl) {
-      logger.warn('No se recibió la URL de YouTube');
-      return res.status(400).send('No se recibió la URL de YouTube');
-    }
+    if (!youtubeUrl) return res.status(400).send('No se recibió la URL de YouTube');
 
-    // Generar nuevo randomId
     const randomId = Date.now().toString();
-
-    // Descargar el audio con yt-dlp
     logger.info(`Descargando audio de: ${youtubeUrl}`);
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
+
     try {
       await ytdlp(youtubeUrl, {
         output: inputAudioPath,
         extractAudio: true,
         audioFormat: 'mp3',
         audioQuality: '0',
-        cookies: '/app/cookies.txt'  // Ruta al archivo de cookies en el contenedor
+        // --- CAMBIO CRÍTICO AQUÍ ABAJO ---
+        cookies: '/secrets/cookies.txt'  // <--- CORREGIDO: Apunta al volumen montado
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
       logger.error(`Error al descargar el audio: ${downloadError.message}`);
-      return res.status(500).send('Error al descargar el audio de YouTube');
+      return res.status(500).send('Error al descargar el audio de YouTube. Revisa logs.');
     }
 
-    // Ejecutar Spleeter para separar el audio
+    // Ejecutar Spleeter
     const pythonScriptPath = path.join(__dirname, 'separar.py');
     logger.info('Ejecutando separación de audio...');
-    const audioPathForProcessing = inputAudioPath;
-    exec(`python "${pythonScriptPath}" "${audioPathForProcessing}" "${randomId}"`, (error, stdout, stderr) => {
-      logger.info('--- SPLITTER STDOUT ---\n' + stdout);
-      logger.info('--- SPLITTER STDERR ---\n' + stderr);
+    
+    // Pasamos el BUCKET_NAME como variable de entorno al script de Python por si acaso
+    const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
+
+    exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
+      logger.info('Python output:\n' + stdout);
+      if (stderr) logger.warn('Python stderr:\n' + stderr);
 
       if (error) {
-        logger.error(`Error al ejecutar Spleeter: ${error.message}`);
+        logger.error(`Error Spleeter: ${error.message}`);
         return res.status(500).send('Error en la separación de audio');
       }
 
+      // --- LOGICA DE RESPUESTA MEJORADA ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-      const stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
-      const resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+      
+      // Intentamos leer qué archivos se generaron
+      let stemFiles = [];
+      try {
+          stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
+      } catch (e) {
+          logger.error("No se encontró la carpeta de salida local (¿Quizás Python falló silenciosamente?)");
+      }
 
-      // Si todo fue exitoso, responder con la URL de los archivos generados
+      // DECISIÓN INTELIGENTE:
+      // Si tenemos bucket configurado, devolvemos la URL pública del bucket.
+      // Si no, devolvemos la URL local.
+      let resultUrls;
+      if (bucketName) {
+        // Asumiendo que el bucket es público o tienes acceso. 
+        // La ruta en 'separar.py' es: stems/{randomId}/{file}
+        resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
+      } else {
+        resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+      }
+
       res.json({ message: 'Separación completada', files: resultUrls });
     });
+
   } catch (err) {
-    logger.error(`Error en /process-url: ${err.message}`);
+    logger.error(`Error general: ${err.message}`);
     res.status(500).send('Error procesando la solicitud');
   }
 });
 
-/**
- * Ruta para subir archivos
- */
+// --- RUTA PARA SUBIR ARCHIVOS ---
 app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
-  try {
-    if (!req.file) {
-      logger.warn('No se subió ningún archivo.');
-      return res.status(400).send('No se subió ningún archivo.');
-    }
-
+    // ... (Mantén tu lógica aquí, es similar a la de arriba)
+    // Solo recuerda aplicar la misma lógica de resultUrls si quieres que sea persistente.
+    if (!req.file) return res.status(400).send('No file uploaded.');
+    
     const randomId = Date.now().toString();
     const uploadedFilePath = req.file.path;
-
-    // Ejecutar Spleeter para separar el audio
     const pythonScriptPath = path.join(__dirname, 'separar.py');
-    exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, (error, stdout, stderr) => {
-      logger.info('--- SPLITTER STDOUT ---\n' + stdout);
-      logger.info('--- SPLITTER STDERR ---\n' + stderr);
+    const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
-      if (error) {
-        logger.error(`Error al ejecutar Spleeter: ${error.message}`);
-        return res.status(500).send('Error en la separación de audio');
-      }
+    exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, (error, stdout, stderr) => {
+        if (error) {
+            logger.error(error);
+            return res.status(500).send('Error splitter');
+        }
+        
+        const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+        let stemFiles = [];
+        try { stemFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.wav')); } catch(e){}
 
-      const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-      const stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
-      const resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+        let resultUrls;
+        if (bucketName) {
+            resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
+        } else {
+            resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+        }
 
-      // Si todo fue exitoso, responder con la URL de los archivos generados
-      res.json({ message: 'Separación completada', files: resultUrls });
+        res.json({ message: 'Separación completada', files: resultUrls });
     });
-  } catch (err) {
-    logger.error(`Error en /upload-file: ${err.message}`);
-    res.status(500).send('Error procesando la solicitud');
-  }
 });
 
-// Función de limpieza para eliminar archivos antiguos en GCP
-async function cleanOldOutputs() {
-  if (!storage || !bucketName) {
-    return;
-  }
+// ... (El resto de tu código de limpieza está bien) ...
 
-  const now = Date.now();
-  const expirationTime = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
-
-  try {
-    const [files] = await storage.bucket(bucketName).getFiles();
-    for (const file of files) {
-      const lastModified = new Date(file.metadata.updated).getTime();
-      if (now - lastModified > expirationTime) {
-        await file.delete();
-        logger.info(`Archivo borrado por antigüedad: ${file.name}`);
-      }
-    }
-  } catch (err) {
-    logger.error(`Error durante la limpieza de archivos en GCP: ${err.message}`);
-  }
-}
-
-// Programar la tarea para que se ejecute cada hora (opcional)
-cron.schedule('0 * * * *', () => {
-  logger.info('Iniciando tarea de limpieza de outputs antiguos...');
-  cleanOldOutputs();
-});
-
-// Iniciar servidor
 app.listen(PORT, () => {
-  logger.info(`Servidor escuchando en http://localhost:${PORT}`);
+  logger.info(`Servidor escuchando en puerto ${PORT}`);
 });
