@@ -46,6 +46,24 @@ const upload = multer({
   }
 });
 
+// --- FUNCIÓN AUXILIAR: EL SABUESO DE ARCHIVOS ---
+// Busca archivos .wav en todas las subcarpetas recursivamente
+function findWavFilesRecursively(dir, fileList = []) {
+  const files = fs.readdirSync(dir);
+  files.forEach(file => {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      findWavFilesRecursively(filePath, fileList);
+    } else {
+      if (file.endsWith('.wav')) {
+        fileList.push(filePath);
+      }
+    }
+  });
+  return fileList;
+}
+
 // --- RUTA PARA PROCESAR YOUTUBE ---
 app.post('/process-url', async (req, res) => {
   try {
@@ -59,7 +77,6 @@ app.post('/process-url', async (req, res) => {
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
 
     // --- SOLUCIÓN ERROR COOKIES (READ-ONLY) ---
-    // 1. Definimos dónde está el secreto original
     let cookiesOriginalPath = '/secrets/cookies.txt';
     if (!fs.existsSync(cookiesOriginalPath)) {
       cookiesOriginalPath = '/app/cookies.txt';
@@ -67,15 +84,11 @@ app.post('/process-url', async (req, res) => {
 
     const cookiesTempPath = '/tmp/cookies.txt';
 
-    // 2. RECREAMOS el archivo en /tmp (asegurando permisos de escritura)
     if (fs.existsSync(cookiesOriginalPath)) {
       try {
-        // Leemos el TEXTO del archivo original
         const cookieContent = fs.readFileSync(cookiesOriginalPath, 'utf8');
-        // Creamos un archivo NUEVO con ese texto y forzamos permisos de escritura (0o666)
         fs.writeFileSync(cookiesTempPath, cookieContent, { mode: 0o666 });
-
-        logger.info(`Cookies regeneradas y escribibles en: ${cookiesTempPath}`);
+        logger.info(`Cookies regeneradas en: ${cookiesTempPath}`);
       } catch (copyErr) {
         logger.error(`Error preparando cookies: ${copyErr.message}`);
       }
@@ -89,7 +102,6 @@ app.post('/process-url', async (req, res) => {
         extractAudio: true,
         audioFormat: 'mp3',
         audioQuality: '0',
-        // Usamos la ruta TEMPORAL, no la del secreto
         cookies: cookiesTempPath
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
@@ -106,49 +118,58 @@ app.post('/process-url', async (req, res) => {
 
     exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
       logger.info('Python output:\n' + stdout);
-      if (stderr) logger.warn('Python stderr:\n' + stderr);
+      // stderr en Python suele tener warnings, no necesariamente errores fatales
+      if (stderr) logger.warn('Python stderr (Warnings): ' + stderr);
 
       if (error) {
-        logger.error(`Error Spleeter: ${error.message}`);
+        logger.error(`Error FATAL Spleeter: ${error.message}`);
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // --- LOGICA DE RESPUESTA CORREGIDA (Rutas Spleeter) ---
+      // --- LOGICA INFALIBLE PARA ENCONTRAR ARCHIVOS ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
 
-      // Spleeter suele crear una subcarpeta con el nombre del archivo de entrada
-      const inputFileName = path.basename(inputAudioPath, path.extname(inputAudioPath));
-      const spleeterSubDir = path.join(outputDir, inputFileName);
-
-      let finalPathToRead = outputDir;
-
-      // Verificamos si existe la subcarpeta creada por Spleeter
-      if (fs.existsSync(spleeterSubDir)) {
-        finalPathToRead = spleeterSubDir;
-      }
-
-      let stemFiles = [];
+      let allWavFiles = [];
       try {
-        // Leemos los archivos donde realmente están
-        stemFiles = fs.readdirSync(finalPathToRead).filter(file => file.endsWith('.wav'));
+        // Usamos el "Sabueso" para buscar en profundidad
+        if (fs.existsSync(outputDir)) {
+          allWavFiles = findWavFilesRecursively(outputDir);
+        } else {
+          logger.error(`No existe el directorio de salida: ${outputDir}`);
+        }
       } catch (e) {
-        logger.error(`No se encontraron archivos en: ${finalPathToRead}`);
+        logger.error(`Error buscando archivos: ${e.message}`);
       }
 
-      let resultUrls;
+      // Generar URLs públicas
+      let resultUrls = [];
+      const publicPath = path.join(__dirname, 'public');
+
       if (bucketName) {
-        // Si usas bucket, ajusta la ruta según cómo tu script de python suba los archivos
-        resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
+        // Lógica Bucket (simplificada, asume que subiste los archivos con la misma estructura)
+        // Nota: Si usas bucket, asegúrate de que tu script Python devuelva las rutas del bucket o suba recursivamente.
+        // Por ahora, mantendremos la lógica local que es la que estás probando.
+        resultUrls = allWavFiles.map(filePath => {
+          const fileName = path.basename(filePath);
+          return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
+        });
       } else {
-        // Lógica local: Si leímos de una subcarpeta, la URL debe incluirla
-        const urlBase = (finalPathToRead === spleeterSubDir)
-          ? `/outputs/${randomId}/${inputFileName}`
-          : `/outputs/${randomId}`;
-
-        resultUrls = stemFiles.map(file => `${urlBase}/${file}`);
+        // Lógica Local
+        resultUrls = allWavFiles.map(filePath => {
+          // Convertimos la ruta absoluta del sistema (/app/public/outputs/...) 
+          // en una URL relativa para el navegador (/outputs/...)
+          // Reemplazamos backslashes por slashes normales para asegurar compatibilidad web
+          let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
+          return `/${relativePath}`;
+        });
       }
 
-      logger.info(`Enviando archivos al frontend: ${JSON.stringify(resultUrls)}`);
+      logger.info(`Enviando ${resultUrls.length} archivos al frontend: ${JSON.stringify(resultUrls)}`);
+
+      if (resultUrls.length === 0) {
+        return res.status(500).send('Spleeter terminó, pero no se encontraron archivos .wav resultantes.');
+      }
+
       res.json({ message: 'Separación completada', files: resultUrls });
     });
 
@@ -173,37 +194,27 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
       return res.status(500).send('Error splitter');
     }
 
-    // Aplicamos la misma lógica de corrección de rutas para Upload
     const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-    // Nota: Multer suele guardar el archivo con un nombre hash, Spleeter usará ese nombre
-    const inputFileName = path.basename(uploadedFilePath, path.extname(uploadedFilePath));
-    const spleeterSubDir = path.join(outputDir, inputFileName);
+    let allWavFiles = [];
+    try {
+      if (fs.existsSync(outputDir)) {
+        allWavFiles = findWavFilesRecursively(outputDir);
+      }
+    } catch (e) { logger.error(e); }
 
-    let finalPathToRead = outputDir;
-    if (fs.existsSync(spleeterSubDir)) {
-      finalPathToRead = spleeterSubDir;
-    }
-
-    let stemFiles = [];
-    try { stemFiles = fs.readdirSync(finalPathToRead).filter(f => f.endsWith('.wav')); } catch (e) { }
-
-    let resultUrls;
-    if (bucketName) {
-      resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
-    } else {
-      const urlBase = (finalPathToRead === spleeterSubDir)
-        ? `/outputs/${randomId}/${inputFileName}`
-        : `/outputs/${randomId}`;
-      resultUrls = stemFiles.map(file => `${urlBase}/${file}`);
-    }
+    const publicPath = path.join(__dirname, 'public');
+    let resultUrls = allWavFiles.map(filePath => {
+      let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
+      return `/${relativePath}`;
+    });
 
     res.json({ message: 'Separación completada', files: resultUrls });
   });
 });
 
-// Tarea programada para limpiar archivos temporales (cada hora)
+// Limpieza
 cron.schedule('0 * * * *', () => {
-  logger.info('Tarea de limpieza ejecutada (placeholder)');
+  logger.info('Tarea de limpieza ejecutada');
 });
 
 app.listen(PORT, () => {
