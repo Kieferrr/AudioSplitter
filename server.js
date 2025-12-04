@@ -59,7 +59,7 @@ app.post('/process-url', async (req, res) => {
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
 
     // --- SOLUCIÓN ERROR COOKIES (READ-ONLY) ---
-    // 1. Definimos dónde está el secreto original y dónde pondremos la copia temporal
+    // 1. Definimos dónde está el secreto original
     let cookiesOriginalPath = '/secrets/cookies.txt';
     if (!fs.existsSync(cookiesOriginalPath)) {
       cookiesOriginalPath = '/app/cookies.txt';
@@ -113,23 +113,42 @@ app.post('/process-url', async (req, res) => {
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // --- LOGICA DE RESPUESTA ---
+      // --- LOGICA DE RESPUESTA CORREGIDA (Rutas Spleeter) ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+
+      // Spleeter suele crear una subcarpeta con el nombre del archivo de entrada
+      const inputFileName = path.basename(inputAudioPath, path.extname(inputAudioPath));
+      const spleeterSubDir = path.join(outputDir, inputFileName);
+
+      let finalPathToRead = outputDir;
+
+      // Verificamos si existe la subcarpeta creada por Spleeter
+      if (fs.existsSync(spleeterSubDir)) {
+        finalPathToRead = spleeterSubDir;
+      }
 
       let stemFiles = [];
       try {
-        stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
+        // Leemos los archivos donde realmente están
+        stemFiles = fs.readdirSync(finalPathToRead).filter(file => file.endsWith('.wav'));
       } catch (e) {
-        logger.error("No se encontró la carpeta de salida local (¿Quizás Python falló silenciosamente?)");
+        logger.error(`No se encontraron archivos en: ${finalPathToRead}`);
       }
 
       let resultUrls;
       if (bucketName) {
+        // Si usas bucket, ajusta la ruta según cómo tu script de python suba los archivos
         resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
       } else {
-        resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+        // Lógica local: Si leímos de una subcarpeta, la URL debe incluirla
+        const urlBase = (finalPathToRead === spleeterSubDir)
+          ? `/outputs/${randomId}/${inputFileName}`
+          : `/outputs/${randomId}`;
+
+        resultUrls = stemFiles.map(file => `${urlBase}/${file}`);
       }
 
+      logger.info(`Enviando archivos al frontend: ${JSON.stringify(resultUrls)}`);
       res.json({ message: 'Separación completada', files: resultUrls });
     });
 
@@ -154,15 +173,28 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
       return res.status(500).send('Error splitter');
     }
 
+    // Aplicamos la misma lógica de corrección de rutas para Upload
     const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+    // Nota: Multer suele guardar el archivo con un nombre hash, Spleeter usará ese nombre
+    const inputFileName = path.basename(uploadedFilePath, path.extname(uploadedFilePath));
+    const spleeterSubDir = path.join(outputDir, inputFileName);
+
+    let finalPathToRead = outputDir;
+    if (fs.existsSync(spleeterSubDir)) {
+      finalPathToRead = spleeterSubDir;
+    }
+
     let stemFiles = [];
-    try { stemFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.wav')); } catch (e) { }
+    try { stemFiles = fs.readdirSync(finalPathToRead).filter(f => f.endsWith('.wav')); } catch (e) { }
 
     let resultUrls;
     if (bucketName) {
       resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
     } else {
-      resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+      const urlBase = (finalPathToRead === spleeterSubDir)
+        ? `/outputs/${randomId}/${inputFileName}`
+        : `/outputs/${randomId}`;
+      resultUrls = stemFiles.map(file => `${urlBase}/${file}`);
     }
 
     res.json({ message: 'Separación completada', files: resultUrls });
@@ -171,7 +203,6 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
 
 // Tarea programada para limpiar archivos temporales (cada hora)
 cron.schedule('0 * * * *', () => {
-  // Aquí puedes agregar lógica para borrar carpetas viejas de /tmp o /uploads
   logger.info('Tarea de limpieza ejecutada (placeholder)');
 });
 
