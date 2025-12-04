@@ -11,7 +11,7 @@ const cron = require('node-cron');
 const { Storage } = require('@google-cloud/storage');
 
 // Configuración de Google Cloud Storage
-const bucketName = process.env.BUCKET_NAME; // Asegúrate de definir esta variable en Cloud Run
+const bucketName = process.env.BUCKET_NAME; 
 const storage = bucketName ? new Storage() : null;
 
 const app = express();
@@ -54,7 +54,31 @@ app.post('/process-url', async (req, res) => {
 
     const randomId = Date.now().toString();
     logger.info(`Descargando audio de: ${youtubeUrl}`);
+    
+    // Rutas de archivos
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
+    
+    // --- SOLUCIÓN ERROR COOKIES (READ-ONLY) ---
+    // 1. Definimos dónde está el secreto original y dónde pondremos la copia temporal
+    // Intenta buscar en /secrets/cookies.txt (montaje usual) o en la raíz /app/cookies.txt
+    let cookiesOriginalPath = '/secrets/cookies.txt'; 
+    if (!fs.existsSync(cookiesOriginalPath)) {
+        cookiesOriginalPath = '/app/cookies.txt'; // Fallback por si lo montaste en root
+    }
+    
+    const cookiesTempPath = '/tmp/cookies.txt';
+
+    // 2. Copiamos el archivo a /tmp (que sí permite escritura) para que yt-dlp pueda actualizarlo si quiere
+    if (fs.existsSync(cookiesOriginalPath)) {
+        try {
+            fs.copyFileSync(cookiesOriginalPath, cookiesTempPath);
+            logger.info(`Cookies copiadas exitosamente a: ${cookiesTempPath}`);
+        } catch (copyErr) {
+            logger.error(`Error copiando cookies: ${copyErr.message}`);
+        }
+    } else {
+        logger.warn('ADVERTENCIA: No se encontró el archivo cookies.txt original. yt-dlp podría fallar si requiere autenticación.');
+    }
 
     try {
       await ytdlp(youtubeUrl, {
@@ -62,8 +86,8 @@ app.post('/process-url', async (req, res) => {
         extractAudio: true,
         audioFormat: 'mp3',
         audioQuality: '0',
-        // --- CAMBIO CRÍTICO AQUÍ ABAJO ---
-        cookies: '/secrets/cookies.txt'  // <--- CORREGIDO: Apunta al volumen montado
+        // Usamos la ruta TEMPORAL, no la del secreto
+        cookies: cookiesTempPath 
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
@@ -75,7 +99,6 @@ app.post('/process-url', async (req, res) => {
     const pythonScriptPath = path.join(__dirname, 'separar.py');
     logger.info('Ejecutando separación de audio...');
     
-    // Pasamos el BUCKET_NAME como variable de entorno al script de Python por si acaso
     const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
     exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
@@ -87,10 +110,9 @@ app.post('/process-url', async (req, res) => {
         return res.status(500).send('Error en la separación de audio');
       }
 
-      // --- LOGICA DE RESPUESTA MEJORADA ---
+      // --- LOGICA DE RESPUESTA ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
       
-      // Intentamos leer qué archivos se generaron
       let stemFiles = [];
       try {
           stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
@@ -98,13 +120,8 @@ app.post('/process-url', async (req, res) => {
           logger.error("No se encontró la carpeta de salida local (¿Quizás Python falló silenciosamente?)");
       }
 
-      // DECISIÓN INTELIGENTE:
-      // Si tenemos bucket configurado, devolvemos la URL pública del bucket.
-      // Si no, devolvemos la URL local.
       let resultUrls;
       if (bucketName) {
-        // Asumiendo que el bucket es público o tienes acceso. 
-        // La ruta en 'separar.py' es: stems/{randomId}/{file}
         resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
       } else {
         resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
@@ -121,8 +138,6 @@ app.post('/process-url', async (req, res) => {
 
 // --- RUTA PARA SUBIR ARCHIVOS ---
 app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
-    // ... (Mantén tu lógica aquí, es similar a la de arriba)
-    // Solo recuerda aplicar la misma lógica de resultUrls si quieres que sea persistente.
     if (!req.file) return res.status(400).send('No file uploaded.');
     
     const randomId = Date.now().toString();
@@ -151,7 +166,11 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
     });
 });
 
-// ... (El resto de tu código de limpieza está bien) ...
+// Tarea programada para limpiar archivos temporales (cada hora)
+cron.schedule('0 * * * *', () => {
+    // Aquí puedes agregar lógica para borrar carpetas viejas de /tmp o /uploads
+    logger.info('Tarea de limpieza ejecutada (placeholder)');
+});
 
 app.listen(PORT, () => {
   logger.info(`Servidor escuchando en puerto ${PORT}`);
