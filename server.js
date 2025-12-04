@@ -11,7 +11,7 @@ const cron = require('node-cron');
 const { Storage } = require('@google-cloud/storage');
 
 // Configuración de Google Cloud Storage
-const bucketName = process.env.BUCKET_NAME; 
+const bucketName = process.env.BUCKET_NAME;
 const storage = bucketName ? new Storage() : null;
 
 const app = express();
@@ -54,30 +54,33 @@ app.post('/process-url', async (req, res) => {
 
     const randomId = Date.now().toString();
     logger.info(`Descargando audio de: ${youtubeUrl}`);
-    
+
     // Rutas de archivos
     const inputAudioPath = path.join(__dirname, `tmp_audio_${randomId}.mp3`);
-    
+
     // --- SOLUCIÓN ERROR COOKIES (READ-ONLY) ---
     // 1. Definimos dónde está el secreto original y dónde pondremos la copia temporal
-    // Intenta buscar en /secrets/cookies.txt (montaje usual) o en la raíz /app/cookies.txt
-    let cookiesOriginalPath = '/secrets/cookies.txt'; 
+    let cookiesOriginalPath = '/secrets/cookies.txt';
     if (!fs.existsSync(cookiesOriginalPath)) {
-        cookiesOriginalPath = '/app/cookies.txt'; // Fallback por si lo montaste en root
+      cookiesOriginalPath = '/app/cookies.txt';
     }
-    
+
     const cookiesTempPath = '/tmp/cookies.txt';
 
-    // 2. Copiamos el archivo a /tmp (que sí permite escritura) para que yt-dlp pueda actualizarlo si quiere
+    // 2. RECREAMOS el archivo en /tmp (asegurando permisos de escritura)
     if (fs.existsSync(cookiesOriginalPath)) {
-        try {
-            fs.copyFileSync(cookiesOriginalPath, cookiesTempPath);
-            logger.info(`Cookies copiadas exitosamente a: ${cookiesTempPath}`);
-        } catch (copyErr) {
-            logger.error(`Error copiando cookies: ${copyErr.message}`);
-        }
+      try {
+        // Leemos el TEXTO del archivo original
+        const cookieContent = fs.readFileSync(cookiesOriginalPath, 'utf8');
+        // Creamos un archivo NUEVO con ese texto y forzamos permisos de escritura (0o666)
+        fs.writeFileSync(cookiesTempPath, cookieContent, { mode: 0o666 });
+
+        logger.info(`Cookies regeneradas y escribibles en: ${cookiesTempPath}`);
+      } catch (copyErr) {
+        logger.error(`Error preparando cookies: ${copyErr.message}`);
+      }
     } else {
-        logger.warn('ADVERTENCIA: No se encontró el archivo cookies.txt original. yt-dlp podría fallar si requiere autenticación.');
+      logger.warn('ADVERTENCIA: No se encontró el archivo cookies.txt original.');
     }
 
     try {
@@ -87,7 +90,7 @@ app.post('/process-url', async (req, res) => {
         audioFormat: 'mp3',
         audioQuality: '0',
         // Usamos la ruta TEMPORAL, no la del secreto
-        cookies: cookiesTempPath 
+        cookies: cookiesTempPath
       });
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
@@ -98,7 +101,7 @@ app.post('/process-url', async (req, res) => {
     // Ejecutar Spleeter
     const pythonScriptPath = path.join(__dirname, 'separar.py');
     logger.info('Ejecutando separación de audio...');
-    
+
     const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
     exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
@@ -112,12 +115,12 @@ app.post('/process-url', async (req, res) => {
 
       // --- LOGICA DE RESPUESTA ---
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-      
+
       let stemFiles = [];
       try {
-          stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
+        stemFiles = fs.readdirSync(outputDir).filter(file => file.endsWith('.wav'));
       } catch (e) {
-          logger.error("No se encontró la carpeta de salida local (¿Quizás Python falló silenciosamente?)");
+        logger.error("No se encontró la carpeta de salida local (¿Quizás Python falló silenciosamente?)");
       }
 
       let resultUrls;
@@ -138,38 +141,38 @@ app.post('/process-url', async (req, res) => {
 
 // --- RUTA PARA SUBIR ARCHIVOS ---
 app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
-    if (!req.file) return res.status(400).send('No file uploaded.');
-    
-    const randomId = Date.now().toString();
-    const uploadedFilePath = req.file.path;
-    const pythonScriptPath = path.join(__dirname, 'separar.py');
-    const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
+  if (!req.file) return res.status(400).send('No file uploaded.');
 
-    exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, (error, stdout, stderr) => {
-        if (error) {
-            logger.error(error);
-            return res.status(500).send('Error splitter');
-        }
-        
-        const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-        let stemFiles = [];
-        try { stemFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.wav')); } catch(e){}
+  const randomId = Date.now().toString();
+  const uploadedFilePath = req.file.path;
+  const pythonScriptPath = path.join(__dirname, 'separar.py');
+  const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
 
-        let resultUrls;
-        if (bucketName) {
-            resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
-        } else {
-            resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
-        }
+  exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, (error, stdout, stderr) => {
+    if (error) {
+      logger.error(error);
+      return res.status(500).send('Error splitter');
+    }
 
-        res.json({ message: 'Separación completada', files: resultUrls });
-    });
+    const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
+    let stemFiles = [];
+    try { stemFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.wav')); } catch (e) { }
+
+    let resultUrls;
+    if (bucketName) {
+      resultUrls = stemFiles.map(file => `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${file}`);
+    } else {
+      resultUrls = stemFiles.map(file => `/outputs/${randomId}/${file}`);
+    }
+
+    res.json({ message: 'Separación completada', files: resultUrls });
+  });
 });
 
 // Tarea programada para limpiar archivos temporales (cada hora)
 cron.schedule('0 * * * *', () => {
-    // Aquí puedes agregar lógica para borrar carpetas viejas de /tmp o /uploads
-    logger.info('Tarea de limpieza ejecutada (placeholder)');
+  // Aquí puedes agregar lógica para borrar carpetas viejas de /tmp o /uploads
+  logger.info('Tarea de limpieza ejecutada (placeholder)');
 });
 
 app.listen(PORT, () => {
