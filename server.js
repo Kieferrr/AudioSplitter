@@ -10,9 +10,12 @@ const winston = require('winston');
 const cron = require('node-cron');
 const { Storage } = require('@google-cloud/storage');
 
-// Configuración de Google Cloud Storage
-const bucketName = process.env.BUCKET_NAME;
-const storage = bucketName ? new Storage() : null;
+// --- CONFIGURACIÓN DEL BUCKET ---
+// IMPORTANTE: Verifica que este nombre sea EXACTO al de tu consola de GCP.
+// He puesto 'example_audiosplitter_v1' (con doble T). 
+// Si el tuyo es con una T, cámbialo aquí.
+const bucketName = 'example_audiosplitter_v1';
+const storage = new Storage();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -31,27 +34,6 @@ const logger = winston.createLogger({
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-
-// 🔥 SOLUCIÓN DEFINITIVA PARA LOS ARCHIVOS 404 🔥
-// Esta ruta intercepta cualquier petición a /outputs/... y busca el archivo manualmente
-// sin importar qué tan profunda sea la carpeta que creó Spleeter.
-app.get('/outputs/*', (req, res) => {
-  // req.params[0] contiene todo lo que va después de /outputs/
-  // Ejemplo: "12345/tmp_audio_12345/vocals.wav"
-  const relativePath = req.params[0];
-  const fullPath = path.join(__dirname, 'public', 'outputs', relativePath);
-
-  res.sendFile(fullPath, (err) => {
-    if (err) {
-      logger.error(`Error enviando archivo ${fullPath}: ${err.message}`);
-      if (!res.headersSent) {
-        res.status(404).send('Archivo no encontrado');
-      }
-    }
-  });
-});
-
-// Servir el resto de archivos estáticos (css, js, index.html)
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({
@@ -67,7 +49,7 @@ const upload = multer({
   }
 });
 
-// --- FUNCIÓN AUXILIAR: EL SABUESO DE ARCHIVOS ---
+// --- FUNCIÓN AUXILIAR: BUSCAR ARCHIVOS LOCALES ---
 function findWavFilesRecursively(dir, fileList = []) {
   const files = fs.readdirSync(dir);
   files.forEach(file => {
@@ -82,6 +64,35 @@ function findWavFilesRecursively(dir, fileList = []) {
     }
   });
   return fileList;
+}
+
+// --- FUNCIÓN AUXILIAR: SUBIR A BUCKET ---
+async function uploadToBucket(localFiles, randomId) {
+  if (!bucketName) throw new Error("Nombre del Bucket no configurado.");
+
+  const uploadedUrls = [];
+  const bucket = storage.bucket(bucketName);
+
+  for (const filePath of localFiles) {
+    const fileName = path.basename(filePath);
+    // Organizamos los archivos en carpetas dentro del bucket: stems/ID/archivo.wav
+    const destination = `stems/${randomId}/${fileName}`;
+
+    logger.info(`Subiendo ${fileName} a Google Cloud Storage...`);
+
+    await bucket.upload(filePath, {
+      destination: destination,
+      resumable: false,
+      metadata: {
+        cacheControl: 'public, max-age=31536000',
+      },
+    });
+
+    // URL pública directa
+    const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    uploadedUrls.push(publicUrl);
+  }
+  return uploadedUrls;
 }
 
 // --- RUTA PARA PROCESAR YOUTUBE ---
@@ -118,14 +129,14 @@ app.post('/process-url', async (req, res) => {
       logger.info(`Descarga completada: ${inputAudioPath}`);
     } catch (downloadError) {
       logger.error(downloadError);
-      return res.status(500).send('Error descarga YT');
+      return res.status(500).send('Error descarga YT. Revisa logs.');
     }
 
     // Ejecutar Spleeter
     const pythonScriptPath = path.join(__dirname, 'separar.py');
-    const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
+    const options = { env: { ...process.env } };
 
-    exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, (error, stdout, stderr) => {
+    exec(`python "${pythonScriptPath}" "${inputAudioPath}" "${randomId}"`, options, async (error, stdout, stderr) => {
       logger.info('Python output:\n' + stdout);
       if (stderr) logger.warn('Python stderr: ' + stderr);
       if (error) {
@@ -133,9 +144,8 @@ app.post('/process-url', async (req, res) => {
         return res.status(500).send('Error Spleeter');
       }
 
-      // --- BÚSQUEDA Y RESPUESTA ---
+      // Buscar archivos generados localmente
       const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
-
       let allWavFiles = [];
       try {
         if (fs.existsSync(outputDir)) {
@@ -143,25 +153,20 @@ app.post('/process-url', async (req, res) => {
         }
       } catch (e) { logger.error(e); }
 
-      // Generar URLs
-      const publicPath = path.join(__dirname, 'public');
-      let resultUrls = [];
-
-      if (bucketName) {
-        resultUrls = allWavFiles.map(filePath => {
-          const fileName = path.basename(filePath);
-          return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
-        });
-      } else {
-        // Generamos la URL relativa que nuestra NUEVA RUTA 'app.get(/outputs/*)' va a capturar
-        resultUrls = allWavFiles.map(filePath => {
-          let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
-          return `/${relativePath}`;
-        });
+      if (allWavFiles.length === 0) {
+        return res.status(500).send("No se generaron archivos de audio.");
       }
 
-      logger.info(`Enviando archivos al frontend: ${JSON.stringify(resultUrls)}`);
-      res.json({ message: 'Separación completada', files: resultUrls });
+      try {
+        // SUBIDA AL BUCKET
+        const resultUrls = await uploadToBucket(allWavFiles, randomId);
+        logger.info(`Enviando ${resultUrls.length} URLs del bucket al frontend.`);
+        res.json({ message: 'Separación completada', files: resultUrls });
+
+      } catch (bucketErr) {
+        logger.error(`Error subiendo al bucket: ${bucketErr.message}`);
+        res.status(500).send('Error subiendo archivos a la nube.');
+      }
     });
 
   } catch (err) {
@@ -177,9 +182,9 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
   const randomId = Date.now().toString();
   const uploadedFilePath = req.file.path;
   const pythonScriptPath = path.join(__dirname, 'separar.py');
-  const options = { env: { ...process.env, BUCKET_NAME: bucketName } };
+  const options = { env: { ...process.env } };
 
-  exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, (error, stdout, stderr) => {
+  exec(`python "${pythonScriptPath}" "${uploadedFilePath}" "${randomId}"`, options, async (error, stdout, stderr) => {
     if (error) { logger.error(error); return res.status(500).send('Error splitter'); }
 
     const outputDir = path.join(__dirname, 'public', 'outputs', randomId);
@@ -188,26 +193,82 @@ app.post('/upload-file', upload.single('audioFile'), async (req, res) => {
       if (fs.existsSync(outputDir)) allWavFiles = findWavFilesRecursively(outputDir);
     } catch (e) { logger.error(e); }
 
-    const publicPath = path.join(__dirname, 'public');
-    let resultUrls = [];
-
-    if (bucketName) {
-      resultUrls = allWavFiles.map(filePath => {
-        const fileName = path.basename(filePath);
-        return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
-      });
-    } else {
-      resultUrls = allWavFiles.map(filePath => {
-        let relativePath = path.relative(publicPath, filePath).split(path.sep).join('/');
-        return `/${relativePath}`;
-      });
+    try {
+      const resultUrls = await uploadToBucket(allWavFiles, randomId);
+      res.json({ message: 'Separación completada', files: resultUrls });
+    } catch (bucketErr) {
+      logger.error(bucketErr);
+      res.status(500).send('Error subiendo a la nube');
     }
-
-    res.json({ message: 'Separación completada', files: resultUrls });
   });
 });
 
-cron.schedule('0 * * * *', () => { logger.info('Tarea de limpieza ejecutada'); });
+// --- TAREA DE LIMPIEZA AUTOMÁTICA (LOCAL Y BUCKET) ---
+cron.schedule('*/30 * * * *', async () => {
+  logger.info('--- INICIANDO LIMPIEZA AUTOMÁTICA (30 MIN) ---');
+
+  const MAX_AGE = 30 * 60 * 1000; // 30 minutos
+  const now = Date.now();
+
+  // 1. Limpieza Local (Disco del servidor)
+  const outputsDir = path.join(__dirname, 'public', 'outputs');
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const rootDir = __dirname;
+
+  // Limpiar stems locales
+  if (fs.existsSync(outputsDir)) {
+    try {
+      fs.readdirSync(outputsDir).forEach(file => {
+        const curPath = path.join(outputsDir, file);
+        const stats = fs.statSync(curPath);
+        if (now - stats.mtimeMs > MAX_AGE) {
+          fs.removeSync(curPath);
+          logger.info(`Local borrado: ${file}`);
+        }
+      });
+    } catch (e) { logger.error(`Error limpieza local: ${e.message}`); }
+  }
+
+  // Limpiar mp3 temporales en raíz
+  try {
+    fs.readdirSync(rootDir).forEach(file => {
+      if (file.startsWith('tmp_audio_') && (file.endsWith('.mp3') || file.endsWith('.mp4'))) {
+        const curPath = path.join(rootDir, file);
+        const stats = fs.statSync(curPath);
+        if (now - stats.mtimeMs > MAX_AGE) {
+          fs.unlinkSync(curPath);
+        }
+      }
+    });
+  } catch (e) { }
+
+  // 2. Limpieza del Bucket (Nube)
+  if (bucketName) {
+    try {
+      const bucket = storage.bucket(bucketName);
+      // Buscamos archivos en la carpeta 'stems/'
+      const [files] = await bucket.getFiles({ prefix: 'stems/' });
+
+      files.forEach(async (file) => {
+        if (file.metadata.timeCreated) {
+          const createdTime = new Date(file.metadata.timeCreated).getTime();
+          if (now - createdTime > MAX_AGE) {
+            try {
+              await file.delete();
+              logger.info(`Bucket borrado: ${file.name}`);
+            } catch (delErr) {
+              logger.error(`Falló borrado bucket: ${file.name}`);
+            }
+          }
+        }
+      });
+    } catch (bucketErr) {
+      logger.error(`Error conectando al bucket para limpieza: ${bucketErr.message}`);
+    }
+  }
+
+  logger.info('--- LIMPIEZA FINALIZADA ---');
+});
 
 app.listen(PORT, () => {
   logger.info(`Servidor escuchando en puerto ${PORT}`);
