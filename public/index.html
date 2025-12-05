@@ -427,57 +427,66 @@
       });
     }
 
-    // --- NUEVA LÓGICA DE SINCRONIZACIÓN (LA SOLUCIÓN AL DESFASE) ---
+    // --- NUEVA LÓGICA DE SINCRONIZACIÓN MEJORADA (V2) ---
 
-    // Función asíncrona para buscar en todos los stems y esperar a que estén listos
+    // Función asíncrona para buscar en todos los stems y esperar a BUFFERING
     async function seekAllStems(targetTime) {
-      // 1. Pausamos visualmente el timer para que no salte
+      // 1. Pausamos visualmente el timer y los audios
       stopPlaybackTimer();
+      Object.values(stemsHowls).forEach(h => h.pause()); // Pausa forzada interna
 
       // Actualizamos variables de tiempo globales
       currentPlaybackTime = targetTime;
       accumulatedTime = targetTime;
-      updateProgressBar(targetTime); // Actualizar UI inmediatamente
+      updateProgressBar(targetTime);
 
-      // 2. Creamos una lista de promesas. Cada stem debe prometer que ya cargó el nuevo tiempo.
+      // 2. Creamos una lista de promesas. 
+      // Esta vez esperamos a 'canplay' (tengo datos) en lugar de 'seeked' (moví la aguja)
       const seekPromises = Object.values(stemsHowls).map(howl => {
         return new Promise((resolve) => {
-          // Accedemos al nodo de audio HTML5 interno de Howler
-          // Esto es necesario para escuchar el evento nativo 'seeked'
           const sound = howl._sounds[0];
+
           if (sound && sound._node) {
             const node = sound._node;
 
-            // Función que se ejecuta cuando el audio ya cargó el nuevo tiempo
-            const onSeeked = () => {
-              node.removeEventListener('seeked', onSeeked);
-              resolve();
+            // Definimos la función de chequeo
+            const checkReady = () => {
+              // readyState 3 o 4 significa que tiene datos para reproducir
+              if (node.readyState >= 3) {
+                resolve();
+              } else {
+                // Si no está listo, esperamos al evento 'canplay' (puedo reproducir)
+                // Usamos { once: true } para que el listener se borre solo
+                node.addEventListener('canplay', resolve, { once: true });
+              }
             };
-
-            // Escuchamos el evento
-            node.addEventListener('seeked', onSeeked);
 
             // Ejecutamos el seek
             howl.seek(targetTime);
 
-            // Seguridad: Si por alguna razón el evento no dispara en 2 segundos, resolvemos igual
-            setTimeout(() => {
-              node.removeEventListener('seeked', onSeeked);
-              resolve();
-            }, 2000);
+            // Verificamos inmediatamente (por si ya estaba cargado en caché)
+            // Pequeño delay de 50ms para permitir que el navegador actualice su estado interno tras el seek
+            setTimeout(checkReady, 50);
+
+            // Seguridad: Si internet falla y no carga en 4 segundos, soltamos la promesa para no congelar
+            setTimeout(resolve, 4000);
 
           } else {
-            // Fallback por si hay error interno
+            // Fallback por si hay error interno en Howler
             howl.seek(targetTime);
             resolve();
           }
         });
       });
 
-      // 3. Esperamos a que TODOS los stems terminen de cargar (Promise.all)
-      console.log("Sincronizando stems...");
-      await Promise.all(seekPromises);
-      console.log("Stems sincronizados.");
+      // 3. Esperamos a que TODOS tengan datos suficientes (Buffering completo)
+      console.log("Esperando buffering de todos los stems...");
+      try {
+        await Promise.all(seekPromises);
+      } catch (e) {
+        console.log("Timeout en sincronización, reproduciendo de todas formas");
+      }
+      console.log("Buffering completo. Reproduciendo.");
 
       // 4. Si estaba reproduciendo, reanudamos todos A LA VEZ
       if (isPlaying) {
@@ -485,15 +494,13 @@
         startPlaybackTimer();
 
         Object.values(stemsHowls).forEach(howl => {
-          // Solo reproducimos si no está muteado
           if (howl.volume() > 0) {
             howl.play();
           }
         });
       }
     }
-
-
+    
     // --- MANEJO DE RESPUESTA Y CREACIÓN DE AUDIO ---
 
     async function handleResponse(data) {
