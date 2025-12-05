@@ -326,14 +326,15 @@
   <script src="https://cdn.jsdelivr.net/npm/wavesurfer.js"></script>
 
   <script>
-    // Mapeo de nombres de stems a etiquetas en español y emojis
+    // --- CONFIGURACIÓN Y VARIABLES GLOBALES ---
+
+    // Mapeo de nombres de stems a etiquetas y emojis
     const stemLabels = {
       'vocals': { label: 'Voz', icon: '🎤' },
       'drums': { label: 'Batería', icon: '🥁' },
       'bass': { label: 'Bajo', icon: '🎸' },
       'piano': { label: 'Piano', icon: '🎹' },
       'other': { label: 'Otros', icon: '🎵' }
-      // Agrega más mapeos según los stems que uses
     };
 
     const youtubeForm = document.getElementById('youtube-form');
@@ -349,83 +350,54 @@
     const totalTimeSpan = document.getElementById('totalTime');
     const waveformContainer = document.getElementById('waveform');
     const progressTooltip = document.getElementById('progressTooltip');
-
-    // Obtener referencia al control de volumen
     const masterVolumeSlider = document.getElementById('masterVolume');
-
-    // Bandera para evitar bucles de eventos
-    let isSeeking = false;
 
     // Objeto para almacenar los Howl de cada stem
     const stemsHowls = {};
 
-    // Variables para rastrear el tiempo de reproducción
-    let currentPlaybackTime = 0;     // Tiempo actual de reproducción en segundos
-    let playStartTimestamp = null;    // Timestamp cuando la reproducción comenzó
-    let accumulatedTime = 0;          // Tiempo acumulado antes de la última pausa
-    let updateInterval = null;        // Referencia al intervalo de actualización
-    let isPlaying = false;            // Estado de reproducción maestro
-
-    // Instancia de Wavesurfer.js
+    // Variables de estado y tiempo
+    let currentPlaybackTime = 0;
+    let playStartTimestamp = null;
+    let accumulatedTime = 0;
+    let updateInterval = null;
+    let isPlaying = false;
     let wavesurfer = null;
 
-    // Función para limpiar instancias de Howl y restablecer el estado
+    // --- FUNCIONES DE LIMPIEZA Y SETUP ---
+
     function cleanupAudio() {
-      // Detener y destruir Wavesurfer.js
       if (wavesurfer) {
         wavesurfer.destroy();
         wavesurfer = null;
       }
 
-      // Detener y eliminar todas las instancias de Howl
       for (const stem in stemsHowls) {
         if (stemsHowls.hasOwnProperty(stem)) {
           stemsHowls[stem].stop();
           stemsHowls[stem].unload();
-          delete stemsHowls[stem];
-
-          // Resetear los botones de stems
-          const stemButton = document.getElementById(`stem-button-${stem}`);
-          if (stemButton) {
-            stemButton.classList.remove('muted');
-            stemButton.classList.add('unmuted');
-            stemButton.innerHTML = `${stemLabels[stem]?.icon || '🎶'} ${stemLabels[stem]?.label || stem}`;
-          }
         }
       }
+      // Vaciar el objeto
+      for (const key in stemsHowls) delete stemsHowls[key];
 
-      // Limpiar el contenedor de botones de stems
       const stemButtonsContainer = document.getElementById('stemButtonsContainer');
-      if (stemButtonsContainer) {
-        stemButtonsContainer.innerHTML = '';
-      }
+      if (stemButtonsContainer) stemButtonsContainer.innerHTML = '';
 
-      // Resetear el botón maestro Play/Pause
       masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
       isPlaying = false;
-
-      // Resetear la barra de progreso y los tiempos
       masterProgressBar.style.width = '0%';
       currentTimeSpan.textContent = '00:00';
       totalTimeSpan.textContent = '00:00';
 
-      // Limpiar el intervalo de actualización
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-      }
-
-      // Resetear el control de volumen a 1 (máximo)
+      stopPlaybackTimer();
       masterVolumeSlider.value = 1;
       Howler.volume(1);
 
-      // Resetear las variables de tiempo
       currentPlaybackTime = 0;
       accumulatedTime = 0;
       playStartTimestamp = null;
     }
 
-    // Función para inicializar Wavesurfer.js como solo visualización
     function initializeWavesurfer(audioUrl) {
       if (wavesurfer) {
         wavesurfer.destroy();
@@ -440,191 +412,201 @@
         height: 150,
         responsive: true,
         normalize: true,
-        backend: 'MediaElement', // Mejor compatibilidad
-        interact: false,         // Deshabilitar interacciones de usuario
-        cursorWidth: 0           // Ocultar el cursor para mayor claridad
+        backend: 'MediaElement',
+        interact: false,
+        cursorWidth: 0
       });
 
       wavesurfer.load(audioUrl);
 
       wavesurfer.on('ready', () => {
-        console.log('Wavesurfer está listo.');
-        // Actualizar el tiempo total una vez que se carga el audio
+        console.log('Wavesurfer listo.');
         totalTimeSpan.textContent = formatTime(wavesurfer.getDuration());
-        wavesurfer.pause(); // Asegurar que no reproduzca
-        wavesurfer.setVolume(0); // Silenciar audio
+        wavesurfer.pause();
+        wavesurfer.setVolume(0);
       });
     }
 
-    // Función para manejar la respuesta del servidor
+    // --- NUEVA LÓGICA DE SINCRONIZACIÓN (LA SOLUCIÓN AL DESFASE) ---
+
+    // Función asíncrona para buscar en todos los stems y esperar a que estén listos
+    async function seekAllStems(targetTime) {
+      // 1. Pausamos visualmente el timer para que no salte
+      stopPlaybackTimer();
+
+      // Actualizamos variables de tiempo globales
+      currentPlaybackTime = targetTime;
+      accumulatedTime = targetTime;
+      updateProgressBar(targetTime); // Actualizar UI inmediatamente
+
+      // 2. Creamos una lista de promesas. Cada stem debe prometer que ya cargó el nuevo tiempo.
+      const seekPromises = Object.values(stemsHowls).map(howl => {
+        return new Promise((resolve) => {
+          // Accedemos al nodo de audio HTML5 interno de Howler
+          // Esto es necesario para escuchar el evento nativo 'seeked'
+          const sound = howl._sounds[0];
+          if (sound && sound._node) {
+            const node = sound._node;
+
+            // Función que se ejecuta cuando el audio ya cargó el nuevo tiempo
+            const onSeeked = () => {
+              node.removeEventListener('seeked', onSeeked);
+              resolve();
+            };
+
+            // Escuchamos el evento
+            node.addEventListener('seeked', onSeeked);
+
+            // Ejecutamos el seek
+            howl.seek(targetTime);
+
+            // Seguridad: Si por alguna razón el evento no dispara en 2 segundos, resolvemos igual
+            setTimeout(() => {
+              node.removeEventListener('seeked', onSeeked);
+              resolve();
+            }, 2000);
+
+          } else {
+            // Fallback por si hay error interno
+            howl.seek(targetTime);
+            resolve();
+          }
+        });
+      });
+
+      // 3. Esperamos a que TODOS los stems terminen de cargar (Promise.all)
+      console.log("Sincronizando stems...");
+      await Promise.all(seekPromises);
+      console.log("Stems sincronizados.");
+
+      // 4. Si estaba reproduciendo, reanudamos todos A LA VEZ
+      if (isPlaying) {
+        playStartTimestamp = Date.now() - currentPlaybackTime * 1000;
+        startPlaybackTimer();
+
+        Object.values(stemsHowls).forEach(howl => {
+          // Solo reproducimos si no está muteado
+          if (howl.volume() > 0) {
+            howl.play();
+          }
+        });
+      }
+    }
+
+
+    // --- MANEJO DE RESPUESTA Y CREACIÓN DE AUDIO ---
+
     async function handleResponse(data) {
-      // Ocultar el spinner
       spinner.classList.add('d-none');
+      statusDiv.innerHTML = `<div class="alert alert-success" role="alert"><strong>${data.message}</strong></div>`;
 
-      // Mostrar mensaje de estado con clase de alerta de éxito
-      statusDiv.innerHTML = `<div class="alert alert-success" role="alert">
-      <strong>${data.message}</strong>
-    </div>`;
-
-      // Limpiar los resultados anteriores y el estado previo
       cleanupAudio();
-
-      // Mostrar el reproductor maestro
       masterPlayer.classList.remove('d-none');
 
-      // Inicializar Wavesurfer.js con la primera pista para la visualización
       if (data.files.length > 0) {
-        const firstStemUrl = data.files[0];
-        initializeWavesurfer(firstStemUrl);
+        initializeWavesurfer(data.files[0]);
       }
 
-      // Iterar sobre los archivos recibidos y crear elementos para cada uno
       data.files.forEach((fileUrl) => {
-        // Extraer el nombre del archivo del URL
-        const fileName = fileUrl.split('/').pop(); // Obtiene 'vocals.wav', 'drums.wav', etc.
-        const stemName = fileName.split('.')[0].toLowerCase(); // Obtiene 'vocals', 'drums', etc.
+        const fileName = fileUrl.split('/').pop();
+        const stemName = fileName.split('.')[0].toLowerCase();
 
-        // Obtener la etiqueta y el icono correspondiente del mapeo
         const stemInfo = stemLabels[stemName] || { label: 'Instrumentos', icon: '🎶' };
-        const trackName = stemInfo.label;
-        const trackIcon = stemInfo.icon;
 
-        // Crear el botón para mute/unmute
         const stemButton = document.createElement('button');
-        stemButton.className = 'stem-button unmuted'; // Inicialmente unmuted
+        stemButton.className = 'stem-button unmuted';
         stemButton.id = `stem-button-${stemName}`;
-        stemButton.innerHTML = `${trackIcon} ${trackName}`;
+        stemButton.innerHTML = `${stemInfo.icon} ${stemInfo.label}`;
+        document.getElementById('stemButtonsContainer').appendChild(stemButton);
 
-        // Agregar el botón al contenedor de botones
-        const stemButtonsContainer = document.getElementById('stemButtonsContainer');
-        stemButtonsContainer.appendChild(stemButton);
-
-        // Crear el reproductor usando Howler.js
         const howl = new Howl({
           src: [fileUrl],
-          html5: true,
-          volume: 1, // Iniciar en unmuted
+          html5: true, // Importante para streaming
+          volume: 1,
+          preload: true,
           onload: () => {
-            console.log(`Audio cargado: ${fileUrl}`);
-            // Actualizar el tiempo total una vez que se carga el primer stem
-            if (Object.keys(stemsHowls).length === 0 && data.files.length > 0) {
-              const duration = howl.duration();
-              totalTimeSpan.textContent = formatTime(duration);
+            if (Object.keys(stemsHowls).length === 1) { // Primer stem cargado
+              totalTimeSpan.textContent = formatTime(howl.duration());
             }
-          },
-          onloaderror: function (id, error) {
-            console.error(`Error al cargar ${fileUrl}:`, error);
-          },
-          onplayerror: function (id, error) {
-            console.error(`Error al reproducir ${fileUrl}:`, error);
           }
         });
 
-        // Almacenar el Howl en el objeto stemsHowls
         stemsHowls[stemName] = howl;
 
-        // Manejar el click del botón para mute/unmute
         stemButton.addEventListener('click', function () {
           const isMuted = howl.volume() === 0;
           if (isMuted) {
             // Desmutear
-            howl.seek(currentPlaybackTime); // Establecer la posición de reproducción
-            howl.volume(1); // Restaurar el volumen
+            howl.seek(currentPlaybackTime);
+            howl.volume(1);
             if (isPlaying && !howl.playing()) {
-              howl.play(); // Reproducir si el master está reproduciendo
+              howl.play();
             }
             this.classList.remove('muted');
             this.classList.add('unmuted');
           } else {
-            // Muteear
-            howl.volume(0); // Silenciar
+            // Mutear
+            howl.volume(0);
             this.classList.remove('unmuted');
             this.classList.add('muted');
-            // No pausar el stem al mutearlo
           }
-
-          // No se necesita actualizar la visualización de la onda ya que es fija
         });
       });
-
-      // No es necesario iniciar otro updateInterval aquí, ya está gestionado por el temporizador central
     }
 
-    // Función para extraer el randomId de la URL del archivo
-    // Suponiendo que la URL tiene la estructura /outputs/<randomId>/<filename>
-    function extractRandomId(fileUrl) {
-      const parts = fileUrl.split('/');
-      return parts[3]; // Asumiendo que 'outputs' es el segundo elemento (index 1) y randomId el tercero (index 2)
-    }
+    // --- UTILIDADES ---
 
-    // Función para formatear segundos a mm:ss
     function formatTime(seconds) {
       const minutes = Math.floor(seconds / 60);
       const secs = Math.floor(seconds % 60);
       return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    // Función para actualizar la barra de reproducción separada
     function updateProgressBar(currentTime) {
       if (!wavesurfer) return;
-
-      const duration = wavesurfer.getDuration();
+      const duration = wavesurfer.getDuration() || 1; // Evitar división por cero
       const progressPercent = (currentTime / duration) * 100;
       masterProgressBar.style.width = `${progressPercent}%`;
       currentTimeSpan.textContent = formatTime(currentTime);
-      totalTimeSpan.textContent = formatTime(duration);
 
-      // Actualizar Wavesurfer.js's cursor
-      if (wavesurfer) {
-        isSeeking = true;
-        wavesurfer.seekTo(progressPercent / 100);
-        isSeeking = false;
-      }
+      // Actualizamos cursor visual de wavesurfer sin emitir eventos
+      wavesurfer.seekTo(progressPercent / 100);
     }
 
-    // Función para iniciar el temporizador de reproducción
     function startPlaybackTimer() {
-      playStartTimestamp = Date.now() - accumulatedTime * 1000; // Ajustar el timestamp inicial
-      console.log('Temporizador iniciado');
+      if (updateInterval) clearInterval(updateInterval);
+
+      playStartTimestamp = Date.now() - accumulatedTime * 1000;
+
       updateInterval = setInterval(() => {
         currentPlaybackTime = (Date.now() - playStartTimestamp) / 1000;
-        console.log(`Tiempo de reproducción actual: ${currentPlaybackTime.toFixed(2)}s`);
-        updateProgressBar(currentPlaybackTime); // Actualizar la barra de progreso
-        // Actualizar el cursor de Wavesurfer.js
-        if (wavesurfer) {
-          wavesurfer.seekTo(currentPlaybackTime / wavesurfer.getDuration());
-        }
-      }, 200); // Actualizar cada 200ms para mayor precisión
+        updateProgressBar(currentPlaybackTime);
+      }, 100); // 100ms es suficiente fluidez
     }
 
-    // Función para detener el temporizador de reproducción
     function stopPlaybackTimer() {
-      clearInterval(updateInterval);
-      updateInterval = null;
-      accumulatedTime = currentPlaybackTime; // Acumular el tiempo hasta ahora
-      console.log('Temporizador detenido');
+      if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+      }
+      accumulatedTime = currentPlaybackTime;
     }
 
-    // Función para mostrar el spinner y limpiar mensajes anteriores
-    function showSpinner(message = 'Procesando') {
-      statusDiv.innerHTML = ''; // Limpiar mensajes anteriores
+    function showSpinner() {
+      statusDiv.innerHTML = '';
       spinner.classList.remove('d-none');
-      resultDiv.innerHTML = ''; // Limpiar resultados anteriores
-      masterPlayer.classList.add('d-none'); // Ocultar reproductor maestro
-
-      // Detener y limpiar todos los Howls existentes
+      resultDiv.innerHTML = '';
+      masterPlayer.classList.add('d-none');
       cleanupAudio();
     }
 
-    // Manejar el formulario de URL de YouTube
+    // --- EVENT LISTENERS UI ---
+
     youtubeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showSpinner();
-
       const youtubeInput = document.getElementById('youtubeUrl');
       const urlValue = youtubeInput.value.trim();
-
-      // Limpiar el campo de texto inmediatamente
       youtubeInput.value = '';
 
       try {
@@ -633,94 +615,51 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ youtubeUrl: urlValue })
         });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText);
-        }
-
-        const data = await response.json();
-        handleResponse(data);
+        if (!response.ok) throw new Error(await response.text());
+        handleResponse(await response.json());
       } catch (err) {
-        // Ocultar el spinner y mostrar el error en los resultados
         spinner.classList.add('d-none');
-        statusDiv.innerHTML = `<div class="alert alert-danger" role="alert">
-        <strong>Error:</strong> ${err.message}
-      </div>`;
+        statusDiv.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> ${err.message}</div>`;
       }
     });
 
-    // Manejar el formulario de subida de archivos
     uploadForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showSpinner();
-
       const formData = new FormData(uploadForm);
-      const fileInput = document.getElementById('audioFile');
-
       try {
-        const response = await fetch('/upload-file', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText);
-        }
-
-        const data = await response.json();
-        handleResponse(data);
-
-        // Limpiar el campo de archivo
-        fileInput.value = '';
+        const response = await fetch('/upload-file', { method: 'POST', body: formData });
+        if (!response.ok) throw new Error(await response.text());
+        handleResponse(await response.json());
+        document.getElementById('audioFile').value = '';
       } catch (err) {
-        // Ocultar el spinner y mostrar el error en los resultados
         spinner.classList.add('d-none');
-        statusDiv.innerHTML = `<div class="alert alert-danger" role="alert">
-        <strong>Error:</strong> ${err.message}
-      </div>`;
+        statusDiv.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> ${err.message}</div>`;
       }
     });
 
-    // Función para manejar el botón maestro Play/Pause
     masterPlayPauseBtn.addEventListener('click', () => {
       if (isPlaying) {
-        // Pausar la reproducción
+        // PAUSAR
         isPlaying = false;
-        stopPlaybackTimer(); // Detener el temporizador
-
-        // Pausar todos los stems
-        for (const stem in stemsHowls) {
-          if (stemsHowls.hasOwnProperty(stem)) {
-            stemsHowls[stem].pause();
-          }
-        }
-
-        // Cambiar el texto del botón
+        stopPlaybackTimer();
+        Object.values(stemsHowls).forEach(h => h.pause());
         masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
       } else {
-        // Iniciar la reproducción
+        // REPRODUCIR
         isPlaying = true;
-        startPlaybackTimer(); // Iniciar el temporizador
-
-        // Reproducir todos los stems que están unmuted desde el tiempo actual
-        for (const stem in stemsHowls) {
-          if (stemsHowls.hasOwnProperty(stem)) {
-            const howl = stemsHowls[stem];
-            if (howl.volume() > 0 && !howl.playing()) {
-              howl.seek(currentPlaybackTime); // Buscar al tiempo actual
-              howl.play();
-            }
+        startPlaybackTimer();
+        Object.values(stemsHowls).forEach(h => {
+          if (h.volume() > 0) {
+            h.seek(currentPlaybackTime); // Asegurar sincronización al iniciar
+            h.play();
           }
-        }
-
-        // Cambiar el texto del botón
+        });
         masterPlayPauseBtn.innerHTML = '⏸️ Pausar';
       }
     });
 
-    // Manejar clic en la barra de progreso para buscar
+    // --- LÓGICA DE BARRA DE PROGRESO (MODIFICADA) ---
     masterProgress.addEventListener('click', (e) => {
       if (!wavesurfer) return;
 
@@ -729,43 +668,22 @@
       const width = rect.width;
       const clickRatio = clickX / width;
 
-      const newSeek = wavesurfer.getDuration() * clickRatio;
+      const newSeekTime = wavesurfer.getDuration() * clickRatio;
 
-      // Actualizar el tiempo de reproducción centralizado
-      currentPlaybackTime = newSeek;
-      accumulatedTime = currentPlaybackTime;
-
-      if (isPlaying) {
-        playStartTimestamp = Date.now() - currentPlaybackTime * 1000; // Ajustar el timestamp
-      }
-
-      // Buscar en todos los stems
-      for (const stem in stemsHowls) {
-        if (stemsHowls.hasOwnProperty(stem)) {
-          stemsHowls[stem].seek(newSeek); // Buscar al nuevo tiempo
-        }
-      }
-
-      // Actualizar la barra de progreso y Wavesurfer.js
-      updateProgressBar(currentPlaybackTime);
-      wavesurfer.seekTo(clickRatio);
+      // Llamamos a la nueva función de sincronización
+      seekAllStems(newSeekTime);
     });
 
-    // Manejar movimiento del mouse sobre la barra de progreso para mostrar el tooltip
+    // Tooltip de progreso
     masterProgress.addEventListener('mousemove', (e) => {
+      if (!wavesurfer) return;
       const rect = masterProgress.getBoundingClientRect();
       const offsetX = e.clientX - rect.left;
-      const width = rect.width;
-      const clickRatio = offsetX / width;
       const duration = wavesurfer.getDuration();
-      const hoverTime = duration * clickRatio;
+      const hoverTime = duration * (offsetX / rect.width);
 
-      // Formatear el tiempo
-      const formattedTime = formatTime(hoverTime);
-
-      // Posicionar y mostrar el tooltip
       progressTooltip.style.left = `${offsetX}px`;
-      progressTooltip.textContent = formattedTime;
+      progressTooltip.textContent = formatTime(hoverTime);
       progressTooltip.style.display = 'block';
     });
 
@@ -773,15 +691,10 @@
       progressTooltip.style.display = 'none';
     });
 
-    masterProgress.addEventListener('mouseenter', () => {
-      progressTooltip.style.display = 'block';
+    masterVolumeSlider.addEventListener('input', (e) => {
+      Howler.volume(parseFloat(e.target.value));
     });
 
-    // Manejar el cambio en el slider de volumen
-    masterVolumeSlider.addEventListener('input', (e) => {
-      const volume = parseFloat(e.target.value);
-      Howler.volume(volume);
-    });
   </script>
 
 </body>
