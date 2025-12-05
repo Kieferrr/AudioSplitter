@@ -328,7 +328,6 @@
   <script>
     // --- CONFIGURACIÓN Y VARIABLES GLOBALES ---
 
-    // Mapeo de nombres de stems a etiquetas y emojis
     const stemLabels = {
       'vocals': { label: 'Voz', icon: '🎤' },
       'drums': { label: 'Batería', icon: '🥁' },
@@ -363,6 +362,9 @@
     let isPlaying = false;
     let wavesurfer = null;
 
+    // Variable para el Debounce (Evita audio doble)
+    let seekTimeout = null;
+
     // --- FUNCIONES DE LIMPIEZA Y SETUP ---
 
     function cleanupAudio() {
@@ -373,11 +375,10 @@
 
       for (const stem in stemsHowls) {
         if (stemsHowls.hasOwnProperty(stem)) {
-          stemsHowls[stem].stop();
+          stemsHowls[stem].stop(); // Stop resetea y limpia buffers
           stemsHowls[stem].unload();
         }
       }
-      // Vaciar el objeto
       for (const key in stemsHowls) delete stemsHowls[key];
 
       const stemButtonsContainer = document.getElementById('stemButtonsContainer');
@@ -427,80 +428,46 @@
       });
     }
 
-    // --- NUEVA LÓGICA DE SINCRONIZACIÓN MEJORADA (V2) ---
+    // --- LÓGICA DE SINCRONIZACIÓN V3 (ESTABLE) ---
 
-    // Función asíncrona para buscar en todos los stems y esperar a BUFFERING
-    async function seekAllStems(targetTime) {
-      // 1. Pausamos visualmente el timer y los audios
+    function seekAllStems(targetTime) {
+      // 1. LIMPIEZA DE CONFLICTOS (Debounce)
+      // Si el usuario hizo clic hace menos de 100ms, cancelamos la orden anterior
+      if (seekTimeout) clearTimeout(seekTimeout);
+
+      // 2. PAUSA INMEDIATA (Evita que sigan sonando mientras calculamos)
       stopPlaybackTimer();
-      Object.values(stemsHowls).forEach(h => h.pause()); // Pausa forzada interna
+      Object.values(stemsHowls).forEach(h => h.pause());
 
-      // Actualizamos variables de tiempo globales
+      // 3. ACTUALIZACIÓN VISUAL INMEDIATA
       currentPlaybackTime = targetTime;
       accumulatedTime = targetTime;
       updateProgressBar(targetTime);
 
-      // 2. Creamos una lista de promesas. 
-      // Esta vez esperamos a 'canplay' (tengo datos) en lugar de 'seeked' (moví la aguja)
-      const seekPromises = Object.values(stemsHowls).map(howl => {
-        return new Promise((resolve) => {
-          const sound = howl._sounds[0];
+      // 4. EJECUCIÓN DIFERIDA (Para asegurar estabilidad)
+      seekTimeout = setTimeout(() => {
 
-          if (sound && sound._node) {
-            const node = sound._node;
-
-            // Definimos la función de chequeo
-            const checkReady = () => {
-              // readyState 3 o 4 significa que tiene datos para reproducir
-              if (node.readyState >= 3) {
-                resolve();
-              } else {
-                // Si no está listo, esperamos al evento 'canplay' (puedo reproducir)
-                // Usamos { once: true } para que el listener se borre solo
-                node.addEventListener('canplay', resolve, { once: true });
-              }
-            };
-
-            // Ejecutamos el seek
-            howl.seek(targetTime);
-
-            // Verificamos inmediatamente (por si ya estaba cargado en caché)
-            // Pequeño delay de 50ms para permitir que el navegador actualice su estado interno tras el seek
-            setTimeout(checkReady, 50);
-
-            // Seguridad: Si internet falla y no carga en 4 segundos, soltamos la promesa para no congelar
-            setTimeout(resolve, 4000);
-
-          } else {
-            // Fallback por si hay error interno en Howler
-            howl.seek(targetTime);
-            resolve();
-          }
+        // Aplicamos el Seek a todos los stems
+        Object.values(stemsHowls).forEach(h => {
+          h.seek(targetTime);
         });
-      });
 
-      // 3. Esperamos a que TODOS tengan datos suficientes (Buffering completo)
-      console.log("Esperando buffering de todos los stems...");
-      try {
-        await Promise.all(seekPromises);
-      } catch (e) {
-        console.log("Timeout en sincronización, reproduciendo de todas formas");
-      }
-      console.log("Buffering completo. Reproduciendo.");
+        // Solo si estaba reproduciendo antes, volvemos a dar Play
+        if (isPlaying) {
+          playStartTimestamp = Date.now() - currentPlaybackTime * 1000;
+          startPlaybackTimer();
 
-      // 4. Si estaba reproduciendo, reanudamos todos A LA VEZ
-      if (isPlaying) {
-        playStartTimestamp = Date.now() - currentPlaybackTime * 1000;
-        startPlaybackTimer();
-
-        Object.values(stemsHowls).forEach(howl => {
-          if (howl.volume() > 0) {
-            howl.play();
-          }
-        });
-      }
+          Object.values(stemsHowls).forEach(h => {
+            // Solo reproducimos los que tienen volumen (no muteados)
+            if (h.volume() > 0) {
+              h.play();
+            }
+          });
+        }
+      }, 50); // 50ms de espera para asegurar que el motor de audio procesó la pausa
     }
-    
+
+
     // --- MANEJO DE RESPUESTA Y CREACIÓN DE AUDIO ---
 
     async function handleResponse(data) {
@@ -517,7 +484,6 @@
       data.files.forEach((fileUrl) => {
         const fileName = fileUrl.split('/').pop();
         const stemName = fileName.split('.')[0].toLowerCase();
-
         const stemInfo = stemLabels[stemName] || { label: 'Instrumentos', icon: '🎶' };
 
         const stemButton = document.createElement('button');
@@ -528,11 +494,11 @@
 
         const howl = new Howl({
           src: [fileUrl],
-          html5: true, // Importante para streaming
+          html5: true,
           volume: 1,
           preload: true,
           onload: () => {
-            if (Object.keys(stemsHowls).length === 1) { // Primer stem cargado
+            if (Object.keys(stemsHowls).length === 1) {
               totalTimeSpan.textContent = formatTime(howl.duration());
             }
           }
@@ -543,7 +509,6 @@
         stemButton.addEventListener('click', function () {
           const isMuted = howl.volume() === 0;
           if (isMuted) {
-            // Desmutear
             howl.seek(currentPlaybackTime);
             howl.volume(1);
             if (isPlaying && !howl.playing()) {
@@ -552,7 +517,6 @@
             this.classList.remove('muted');
             this.classList.add('unmuted');
           } else {
-            // Mutear
             howl.volume(0);
             this.classList.remove('unmuted');
             this.classList.add('muted');
@@ -571,13 +535,15 @@
 
     function updateProgressBar(currentTime) {
       if (!wavesurfer) return;
-      const duration = wavesurfer.getDuration() || 1; // Evitar división por cero
-      const progressPercent = (currentTime / duration) * 100;
+      const duration = wavesurfer.getDuration() || 1;
+      // FIX: Asegurar que nunca pase del 100%
+      const progressPercent = Math.min((currentTime / duration) * 100, 100);
+
       masterProgressBar.style.width = `${progressPercent}%`;
       currentTimeSpan.textContent = formatTime(currentTime);
 
-      // Actualizamos cursor visual de wavesurfer sin emitir eventos
-      wavesurfer.seekTo(progressPercent / 100);
+      // FIX: Asegurar que seekTo no reciba más de 1
+      wavesurfer.seekTo(Math.min(progressPercent / 100, 1));
     }
 
     function startPlaybackTimer() {
@@ -587,8 +553,30 @@
 
       updateInterval = setInterval(() => {
         currentPlaybackTime = (Date.now() - playStartTimestamp) / 1000;
+
+        // --- FIX: DETECCIÓN DE FIN DE CANCIÓN ---
+        const duration = wavesurfer ? wavesurfer.getDuration() : 0;
+
+        if (duration > 0 && currentPlaybackTime >= duration) {
+          stopPlaybackTimer();
+          isPlaying = false;
+          masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
+
+          // Resetear al inicio
+          currentPlaybackTime = 0;
+          accumulatedTime = 0;
+          updateProgressBar(0);
+
+          Object.values(stemsHowls).forEach(h => {
+            h.stop(); // Stop es mejor al finalizar para limpiar
+            h.seek(0);
+          });
+          return;
+        }
+        // ----------------------------------------
+
         updateProgressBar(currentPlaybackTime);
-      }, 100); // 100ms es suficiente fluidez
+      }, 100);
     }
 
     function stopPlaybackTimer() {
@@ -647,18 +635,16 @@
 
     masterPlayPauseBtn.addEventListener('click', () => {
       if (isPlaying) {
-        // PAUSAR
         isPlaying = false;
         stopPlaybackTimer();
         Object.values(stemsHowls).forEach(h => h.pause());
         masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
       } else {
-        // REPRODUCIR
         isPlaying = true;
         startPlaybackTimer();
         Object.values(stemsHowls).forEach(h => {
           if (h.volume() > 0) {
-            h.seek(currentPlaybackTime); // Asegurar sincronización al iniciar
+            h.seek(currentPlaybackTime);
             h.play();
           }
         });
@@ -666,7 +652,7 @@
       }
     });
 
-    // --- LÓGICA DE BARRA DE PROGRESO (MODIFICADA) ---
+    // --- LÓGICA DE BARRA DE PROGRESO (CON CLICK) ---
     masterProgress.addEventListener('click', (e) => {
       if (!wavesurfer) return;
 
@@ -675,13 +661,12 @@
       const width = rect.width;
       const clickRatio = clickX / width;
 
-      const newSeekTime = wavesurfer.getDuration() * clickRatio;
+      const safeRatio = Math.min(Math.max(clickRatio, 0), 1);
+      const newSeekTime = wavesurfer.getDuration() * safeRatio;
 
-      // Llamamos a la nueva función de sincronización
       seekAllStems(newSeekTime);
     });
 
-    // Tooltip de progreso
     masterProgress.addEventListener('mousemove', (e) => {
       if (!wavesurfer) return;
       const rect = masterProgress.getBoundingClientRect();
@@ -690,7 +675,7 @@
       const hoverTime = duration * (offsetX / rect.width);
 
       progressTooltip.style.left = `${offsetX}px`;
-      progressTooltip.textContent = formatTime(hoverTime);
+      progressTooltip.textContent = formatTime(Math.max(0, hoverTime));
       progressTooltip.style.display = 'block';
     });
 
