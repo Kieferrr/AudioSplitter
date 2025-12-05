@@ -362,9 +362,6 @@
     let isPlaying = false;
     let wavesurfer = null;
 
-    // Variable para el Debounce (Evita audio doble)
-    let seekTimeout = null;
-
     // --- FUNCIONES DE LIMPIEZA Y SETUP ---
 
     function cleanupAudio() {
@@ -373,9 +370,10 @@
         wavesurfer = null;
       }
 
+      // Detener y limpiar Howls
       for (const stem in stemsHowls) {
         if (stemsHowls.hasOwnProperty(stem)) {
-          stemsHowls[stem].stop(); // Stop resetea y limpia buffers
+          stemsHowls[stem].stop();
           stemsHowls[stem].unload();
         }
       }
@@ -422,51 +420,15 @@
 
       wavesurfer.on('ready', () => {
         console.log('Wavesurfer listo.');
-        totalTimeSpan.textContent = formatTime(wavesurfer.getDuration());
+        // Aseguramos que la duración sea válida
+        const duration = wavesurfer.getDuration();
+        if (duration && isFinite(duration)) {
+          totalTimeSpan.textContent = formatTime(duration);
+        }
         wavesurfer.pause();
         wavesurfer.setVolume(0);
       });
     }
-
-    // --- LÓGICA DE SINCRONIZACIÓN V3 (ESTABLE) ---
-
-    function seekAllStems(targetTime) {
-      // 1. LIMPIEZA DE CONFLICTOS (Debounce)
-      // Si el usuario hizo clic hace menos de 100ms, cancelamos la orden anterior
-      if (seekTimeout) clearTimeout(seekTimeout);
-
-      // 2. PAUSA INMEDIATA (Evita que sigan sonando mientras calculamos)
-      stopPlaybackTimer();
-      Object.values(stemsHowls).forEach(h => h.pause());
-
-      // 3. ACTUALIZACIÓN VISUAL INMEDIATA
-      currentPlaybackTime = targetTime;
-      accumulatedTime = targetTime;
-      updateProgressBar(targetTime);
-
-      // 4. EJECUCIÓN DIFERIDA (Para asegurar estabilidad)
-      seekTimeout = setTimeout(() => {
-
-        // Aplicamos el Seek a todos los stems
-        Object.values(stemsHowls).forEach(h => {
-          h.seek(targetTime);
-        });
-
-        // Solo si estaba reproduciendo antes, volvemos a dar Play
-        if (isPlaying) {
-          playStartTimestamp = Date.now() - currentPlaybackTime * 1000;
-          startPlaybackTimer();
-
-          Object.values(stemsHowls).forEach(h => {
-            // Solo reproducimos los que tienen volumen (no muteados)
-            if (h.volume() > 0) {
-              h.play();
-            }
-          });
-        }
-      }, 50); // 50ms de espera para asegurar que el motor de audio procesó la pausa
-    }
-
 
     // --- MANEJO DE RESPUESTA Y CREACIÓN DE AUDIO ---
 
@@ -494,21 +456,25 @@
 
         const howl = new Howl({
           src: [fileUrl],
-          html5: true,
+          html5: true, // Streaming activado
           volume: 1,
-          preload: true,
+          preload: true, // Pre-cargar metadata
           onload: () => {
+            // Actualizar tiempo total si wavesurfer falló o para confirmar
             if (Object.keys(stemsHowls).length === 1) {
-              totalTimeSpan.textContent = formatTime(howl.duration());
+              const dur = howl.duration();
+              if (dur && isFinite(dur)) totalTimeSpan.textContent = formatTime(dur);
             }
           }
         });
 
         stemsHowls[stemName] = howl;
 
+        // Lógica de Mute/Unmute individual
         stemButton.addEventListener('click', function () {
           const isMuted = howl.volume() === 0;
           if (isMuted) {
+            // AL DESMUTEAR: Sincronizar posición actual antes de sonar
             howl.seek(currentPlaybackTime);
             howl.volume(1);
             if (isPlaying && !howl.playing()) {
@@ -528,6 +494,7 @@
     // --- UTILIDADES ---
 
     function formatTime(seconds) {
+      if (!seconds || isNaN(seconds)) return "00:00";
       const minutes = Math.floor(seconds / 60);
       const secs = Math.floor(seconds % 60);
       return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -536,40 +503,48 @@
     function updateProgressBar(currentTime) {
       if (!wavesurfer) return;
       const duration = wavesurfer.getDuration() || 1;
-      // FIX: Asegurar que nunca pase del 100%
+
+      // FIX 1: Tope matemático para que no pase del 100%
       const progressPercent = Math.min((currentTime / duration) * 100, 100);
 
       masterProgressBar.style.width = `${progressPercent}%`;
       currentTimeSpan.textContent = formatTime(currentTime);
 
-      // FIX: Asegurar que seekTo no reciba más de 1
+      // FIX 2: WaveSurfer seek visual seguro
       wavesurfer.seekTo(Math.min(progressPercent / 100, 1));
     }
 
     function startPlaybackTimer() {
       if (updateInterval) clearInterval(updateInterval);
 
+      // Calcular timestamp base
       playStartTimestamp = Date.now() - accumulatedTime * 1000;
 
       updateInterval = setInterval(() => {
+        // Calcular tiempo actual
         currentPlaybackTime = (Date.now() - playStartTimestamp) / 1000;
 
-        // --- FIX: DETECCIÓN DE FIN DE CANCIÓN ---
-        const duration = wavesurfer ? wavesurfer.getDuration() : 0;
+        // --- FIX 3: DETECCIÓN DE FIN DE CANCIÓN ---
+        // Usamos la duración de wavesurfer o fallback a un stem
+        let duration = wavesurfer ? wavesurfer.getDuration() : 0;
+        if (duration === 0 && Object.values(stemsHowls).length > 0) {
+          duration = Object.values(stemsHowls)[0].duration();
+        }
 
+        // Si llegamos al final...
         if (duration > 0 && currentPlaybackTime >= duration) {
           stopPlaybackTimer();
           isPlaying = false;
           masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
 
-          // Resetear al inicio
+          // Volver al inicio visualmente
           currentPlaybackTime = 0;
           accumulatedTime = 0;
           updateProgressBar(0);
 
+          // Detener todos los audios
           Object.values(stemsHowls).forEach(h => {
-            h.stop(); // Stop es mejor al finalizar para limpiar
-            h.seek(0);
+            h.stop(); // Stop resetea a 0 internamente
           });
           return;
         }
@@ -595,7 +570,7 @@
       cleanupAudio();
     }
 
-    // --- EVENT LISTENERS UI ---
+    // --- EVENT LISTENERS ---
 
     youtubeForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -635,15 +610,18 @@
 
     masterPlayPauseBtn.addEventListener('click', () => {
       if (isPlaying) {
+        // PAUSAR
         isPlaying = false;
         stopPlaybackTimer();
         Object.values(stemsHowls).forEach(h => h.pause());
         masterPlayPauseBtn.innerHTML = '▶️ Reproducir';
       } else {
+        // REPRODUCIR
         isPlaying = true;
         startPlaybackTimer();
         Object.values(stemsHowls).forEach(h => {
           if (h.volume() > 0) {
+            // Aseguramos que arranque desde el tiempo actual
             h.seek(currentPlaybackTime);
             h.play();
           }
@@ -652,7 +630,8 @@
       }
     });
 
-    // --- LÓGICA DE BARRA DE PROGRESO (CON CLICK) ---
+    // --- LÓGICA DE BARRA DE PROGRESO (SIMPLIFICADA) ---
+    // Eliminamos la función 'seekAllStems' y ponemos la lógica directa aquí
     masterProgress.addEventListener('click', (e) => {
       if (!wavesurfer) return;
 
@@ -661,10 +640,31 @@
       const width = rect.width;
       const clickRatio = clickX / width;
 
-      const safeRatio = Math.min(Math.max(clickRatio, 0), 1);
-      const newSeekTime = wavesurfer.getDuration() * safeRatio;
+      const duration = wavesurfer.getDuration();
+      if (!duration || duration === 0) return; // Protección contra duración 0
 
-      seekAllStems(newSeekTime);
+      // Calculamos el nuevo tiempo
+      const safeRatio = Math.min(Math.max(clickRatio, 0), 1);
+      const newSeekTime = duration * safeRatio;
+
+      // 1. Actualizamos variables globales INMEDIATAMENTE
+      currentPlaybackTime = newSeekTime;
+      accumulatedTime = newSeekTime;
+      updateProgressBar(newSeekTime);
+
+      // 2. Ajustamos el timer para que siga contando desde el nuevo punto
+      if (isPlaying) {
+        playStartTimestamp = Date.now() - currentPlaybackTime * 1000;
+      }
+
+      // 3. Aplicamos el seek a todos los audios directamente
+      Object.values(stemsHowls).forEach(h => {
+        h.seek(currentPlaybackTime);
+        // Forzamos play si debería estar sonando (por si alguno se detuvo)
+        if (isPlaying && h.volume() > 0 && !h.playing()) {
+          h.play();
+        }
+      });
     });
 
     masterProgress.addEventListener('mousemove', (e) => {
