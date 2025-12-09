@@ -11,8 +11,11 @@ const btnStop = document.getElementById('btnStop');
 const currentTimeSpan = document.getElementById('currentTime');
 const totalTimeSpan = document.getElementById('totalTime');
 const songTitleSpan = document.getElementById('songTitle');
+const ytInput = document.getElementById('ytUrl');
+const btnYt = document.getElementById('btnYt');
+const loaderText = document.getElementById('loaderText'); // Para cambiar mensaje
 
-let tracks = []; 
+let tracks = [];
 let isPlaying = false;
 let globalDuration = 0;
 let progressInterval = null;
@@ -47,6 +50,20 @@ fileInput.addEventListener('change', (e) => {
     if (e.target.files.length) handleUpload(e.target.files[0]);
 });
 
+// Evento Click Botón YouTube
+btnYt.addEventListener('click', () => {
+    const url = ytInput.value.trim();
+    if (url) handleYoutube(url);
+});
+
+// Evento Enter en el Input
+ytInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        const url = ytInput.value.trim();
+        if (url) handleYoutube(url);
+    }
+});
+
 // --- 2. SUBIDA ---
 async function handleUpload(file) {
     dropZone.classList.add('hidden');
@@ -68,6 +85,35 @@ async function handleUpload(file) {
     } catch (error) {
         console.error(error);
         alert('Error al procesar el archivo.');
+        location.reload();
+    }
+}
+
+async function handleYoutube(url) {
+    // Interfaz de carga
+    dropZone.parentElement.classList.add('loading-mode'); // Ocultar inputs
+    document.querySelector('.youtube-box').style.display = 'none';
+    document.querySelector('.divider').style.display = 'none';
+    dropZone.style.display = 'none';
+
+    loader.classList.remove('hidden');
+    loaderText.textContent = "Descargando de YouTube y Separando...";
+
+    try {
+        const response = await fetch('/api/youtube', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ youtubeUrl: url })
+        });
+
+        if (!response.ok) throw new Error('Error en servidor');
+
+        const data = await response.json();
+        initDAW(data.files, data.originalName);
+
+    } catch (error) {
+        console.error(error);
+        alert('Error al procesar el video. Verifica el link.');
         location.reload();
     }
 }
@@ -120,7 +166,7 @@ function initDAW(filesUrls, originalName) {
 function handleSoloExclusive(activeTrackName) {
     // 1. Revisamos quién pidió el solo
     const trackRequesting = tracks.find(t => t.name === activeTrackName);
-    
+
     // Si el usuario acaba de activar el solo en este track:
     if (trackRequesting.isSolo) {
         // Desactivamos el solo en TODOS los demás
@@ -192,7 +238,7 @@ function startTimer() {
         const currentTime = tracks[0].wavesurfer.getCurrentTime();
         currentTimeSpan.textContent = formatTime(currentTime);
         if (globalDuration > 0 && currentTime >= globalDuration) {
-            btnStop.click(); 
+            btnStop.click();
         }
     }, 100);
 }

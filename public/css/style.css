@@ -307,3 +307,63 @@ input[type=range] {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border);
 }
+
+/* --- YOUTUBE INPUT --- */
+.youtube-box {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 30px;
+}
+
+.youtube-box input {
+    flex: 1;
+    background: var(--bg-track);
+    border: 1px solid var(--border);
+    padding: 12px 15px;
+    border-radius: 6px;
+    color: white;
+    font-size: 1rem;
+    outline: none;
+    transition: 0.3s;
+}
+
+.youtube-box input:focus {
+    border-color: var(--accent);
+}
+
+.btn-yt {
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    width: 50px;
+    color: white;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-yt:hover {
+    background: var(--accent-hover);
+}
+
+.divider {
+    color: var(--text-dim);
+    margin-bottom: 30px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 500px;
+}
+
+.divider::before,
+.divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid var(--border);
+}
+
+.divider span {
+    margin: 0 10px;
+}

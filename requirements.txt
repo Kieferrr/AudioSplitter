@@ -1,2 +1,3 @@
-spleeter
 google-cloud-storage
+demucs
+yt-dlp

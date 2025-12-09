@@ -1,11 +1,14 @@
 import express from 'express';
 import { splitTrack } from '../controllers/audioController.js';
+import { processYoutube } from '../controllers/youtubeController.js'; // Importar nuevo controller
 import { upload } from '../config/multer.js';
 
 const router = express.Router();
 
-// Definir la ruta POST /upload
-// 'audioFile' es el nombre del campo que debe enviar el formulario HTML
+// Ruta Archivo Local
 router.post('/upload', upload.single('audioFile'), splitTrack);
+
+// Ruta YouTube (Nueva)
+router.post('/youtube', processYoutube);
 
 export default router;
