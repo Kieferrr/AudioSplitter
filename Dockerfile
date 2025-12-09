@@ -1,34 +1,34 @@
-# Usamos una imagen base oficial de Node.js (versión ligera)
+# Usamos Node 20 (versión ligera) como base
 FROM node:20-slim
 
-# Instalamos Python 3, pip y FFmpeg (necesario para audio)
+# 1. INSTALACIÓN DE SISTEMA
+# Instalamos Python, Pip y FFmpeg (Vital para Demucs y yt-dlp)
+# -y confirma automáticamente
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Creamos el directorio de trabajo dentro del contenedor
+# Configurar directorio de trabajo
 WORKDIR /app
 
-# Copiamos los archivos de dependencias de Node
+# 2. DEPENDENCIAS DE NODE (Backend)
+# Copiamos primero package.json para aprovechar el caché de Docker
 COPY package*.json ./
-
-# Instalamos las dependencias de Node (solo producción)
 RUN npm install --only=production
 
-# Copiamos el archivo de requerimientos de Python (lo crearemos en un momento)
+# 3. DEPENDENCIAS DE PYTHON (IA y YouTube)
 COPY requirements.txt ./
-
-# Instalamos las librerías de Python (Spleeter, Google Cloud)
-# Usamos --break-system-packages porque en contenedores es seguro hacerlo
+# --break-system-packages es necesario en las nuevas versiones de Debian/Docker
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
-# Copiamos el resto del código fuente del proyecto
+# 4. CÓDIGO FUENTE
+# Copiamos el resto de los archivos
 COPY . .
 
-# Exponemos el puerto 8080
+# 5. ARRANQUE
+# Exponemos el puerto que espera Cloud Run
 EXPOSE 8080
-
-# Comando para iniciar el servidor
+# Comando de inicio
 CMD [ "node", "server.js" ]
