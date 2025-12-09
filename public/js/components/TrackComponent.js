@@ -28,20 +28,20 @@ export class TrackComponent {
                 </div>
                 <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" title="Volumen">
             </div>
-            <div class="track-waveform" id="waveform-${this.name}"></div>
+            
+            <div class="track-waveform" id="waveform-${this.name}">
+                <div class="hover-tooltip" data-tooltip>00:00</div>
+            </div>
         `;
 
         div.querySelector('#btnMute').onclick = (e) => this.toggleMute(e.target);
         div.querySelector('#volumeSlider').oninput = (e) => this.setVolume(e.target.value);
-        
+
         div.querySelector('#btnSolo').onclick = (e) => {
-            // Lógica interna
             this.toggleSoloState();
-            
-            // Avisar al padre
-            const event = new CustomEvent('track-solo', { 
+            const event = new CustomEvent('track-solo', {
                 detail: { name: this.name },
-                bubbles: true 
+                bubbles: true
             });
             this.container.dispatchEvent(event);
         };
@@ -50,51 +50,72 @@ export class TrackComponent {
     }
 
     initWaveSurfer() {
+        const waveformContainer = this.element.querySelector(`#waveform-${this.name}`);
+        // Seleccionamos por el atributo data-tooltip que pusimos arriba
+        const tooltip = this.element.querySelector('[data-tooltip]');
+
         this.wavesurfer = WaveSurfer.create({
-            container: this.element.querySelector(`#waveform-${this.name}`),
+            container: waveformContainer,
             waveColor: this.color,
-            progressColor: 'rgba(255, 255, 255, 0.3)', // Color de lo ya reproducido
+            progressColor: 'rgba(255, 255, 255, 0.3)',
             url: this.url,
             height: 100,
             normalize: true,
-            
-            // --- HABILITAR CLICK Y ADELANTAR ---
-            interact: true, 
-            cursorColor: '#5c5cec', // Color de la línea de tiempo (Morado)
+            interact: true,
+            cursorColor: '#5c5cec',
             cursorWidth: 2,
             hideScrollbar: true,
         });
 
-        // --- SINCRONIZACIÓN GLOBAL AL CLICKEAR ---
-        // Cuando el usuario hace click o arrastra en ESTE waveform
         this.wavesurfer.on('interaction', (newTime) => {
-            // Calculamos el porcentaje relativo (0 a 1)
             const duration = this.wavesurfer.getDuration();
             const progress = newTime / duration;
-
-            // Emitimos evento para que main.js mueva a TODOS los demás
-            const event = new CustomEvent('track-seek', { 
+            const event = new CustomEvent('track-seek', {
                 detail: { progress: progress, sourceTrack: this.name },
-                bubbles: true 
+                bubbles: true
             });
             this.container.dispatchEvent(event);
         });
+
+        waveformContainer.addEventListener('mousemove', (e) => {
+            const duration = this.wavesurfer.getDuration();
+            if (!duration) return;
+
+            const rect = waveformContainer.getBoundingClientRect();
+            const offsetX = e.clientX - rect.left;
+            const width = rect.width;
+
+            const hoverTime = (offsetX / width) * duration;
+
+            tooltip.textContent = this.formatTime(hoverTime);
+            tooltip.style.left = `${offsetX}px`;
+            tooltip.style.display = 'block';
+        });
+
+        waveformContainer.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+    }
+
+    formatTime(seconds) {
+        if (!seconds || seconds < 0) return "00:00";
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
     toggleMute(btn) {
         this.isMuted = !this.isMuted;
         this.wavesurfer.setMuted(this.isMuted);
-        if(btn) btn.classList.toggle('mute-active', this.isMuted);
+        if (btn) btn.classList.toggle('mute-active', this.isMuted);
     }
 
-    // Método para cambiar el estado visual e interno del Solo
     toggleSoloState() {
         this.isSolo = !this.isSolo;
         const btn = this.element.querySelector('#btnSolo');
         btn.classList.toggle('solo-active', this.isSolo);
     }
 
-    // Método para apagar el Solo forzosamente (cuando otro track pide exclusividad)
     disableSolo() {
         if (this.isSolo) {
             this.isSolo = false;
@@ -118,6 +139,5 @@ export class TrackComponent {
     pause() { this.wavesurfer.pause(); }
     stop() { this.wavesurfer.stop(); }
     seekTo(progress) { this.wavesurfer.seekTo(progress); }
-    
     isReady() { return this.wavesurfer.getDuration() > 0; }
 }

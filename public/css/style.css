@@ -217,7 +217,6 @@ body {
     border-radius: 6px;
     border: 1px solid var(--border);
     height: 100px;
-    overflow: hidden;
     transition: opacity 0.3s;
 }
 
@@ -229,6 +228,8 @@ body {
     flex-direction: column;
     justify-content: space-between;
     border-right: 1px solid var(--border);
+    border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
 }
 
 .track-header {
@@ -284,4 +285,25 @@ input[type=range] {
     cursor: crosshair;
 }
 
-/* Cursor en cruz para precisión */
+/* --- TOOLTIP DE TIEMPO (HOVER) --- */
+.hover-tooltip {
+    position: absolute;
+    top: -25px;
+    /* Que flote justo encima del mouse/onda */
+    background-color: #333;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: monospace;
+    pointer-events: none;
+    /* Vital: para que el mouse 'atraviese' el tooltip y no parpadee */
+    white-space: nowrap;
+    z-index: 10;
+    display: none;
+    /* Oculto por defecto */
+    transform: translateX(-50%);
+    /* Centrarlo respecto al cursor */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+}
