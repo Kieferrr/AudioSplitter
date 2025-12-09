@@ -40,6 +40,7 @@ def download_audio(youtube_url, random_id):
         }],
         'quiet': True,      # Menos basura en el log
         'no_warnings': True,
+        'noprogress': True,
         # Inyectamos la ruta de las cookies (si existen)
         'cookiefile': cookie_file
     }
@@ -69,6 +70,8 @@ def download_audio(youtube_url, random_id):
                 "path": os.path.join(output_dir, f"{random_id}.mp3")
             }
             print(json.dumps(result))
+            sys.stdout.flush()
+            sys.exit(0)
 
     except Exception as e:
         # Manejo de errores
