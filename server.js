@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import apiRoutes from './src/routes/api.js';
 
 // 1. Configuración Inicial
 dotenv.config();
@@ -23,6 +24,9 @@ app.use(express.static(path.join(__dirname, 'public'))); // Servir la página we
 app.get('/ping', (req, res) => {
     res.send('pong 🏓 - El servidor V2 está vivo');
 });
+
+// Rutas de la API
+app.use('/api', apiRoutes);
 
 // 4. Iniciar Servidor
 app.listen(PORT, () => {
