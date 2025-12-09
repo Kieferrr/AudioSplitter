@@ -16,6 +16,13 @@ export const processAudio = (inputPath, randomId, stems = 5) => {
         // Demucs se instaló ahí en el Paso 1.
         const pythonProcess = spawn('python', [scriptPath, inputPath, randomId]);
 
+        // --- NUEVO: Capturar error de arranque (Airbag) ---
+        pythonProcess.on('error', (err) => {
+            console.error("🔴 Error CRÍTICO al iniciar Python:", err);
+            reject(new Error("No se pudo iniciar el separador de audio. ¿Está instalado Python?"));
+        });
+        // --------------------------------------------------
+
         let dataString = '';
         let errorString = '';
 

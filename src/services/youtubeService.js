@@ -12,6 +12,13 @@ export const downloadFromYoutube = (url, randomId) => {
         // Llamamos a python
         const pythonProcess = spawn('python', [scriptPath, url, randomId]);
 
+        // --- NUEVO: Capturar error de arranque ---
+        pythonProcess.on('error', (err) => {
+            console.error("🔴 Error CRÍTICO al iniciar script YouTube:", err);
+            reject(new Error("No se pudo iniciar el descargador. ¿Está instalado Python?"));
+        });
+        // --------------------------------------------------
+
         let dataString = '';
 
         pythonProcess.stdout.on('data', (data) => {
