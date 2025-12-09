@@ -2,43 +2,44 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Truco para __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const processAudio = (inputPath, randomId, stems = 5) => {
     return new Promise((resolve, reject) => {
-        // Ruta absoluta al script de Python (está en la raíz del proyecto)
-        // Subimos 2 niveles desde src/services/ hasta la raíz
+        // Ruta al script de Python
         const scriptPath = path.join(__dirname, '../../separar.py');
 
         console.log(`⚙️ Iniciando procesamiento para ID: ${randomId}`);
 
-        // Ejecutar: python separar.py <input> <id> <stems>
-        const pythonProcess = spawn('python', [scriptPath, inputPath, randomId, stems.toString()]);
+        // IMPORTANTE: Usamos 'python' a secas (usa el PATH global del sistema)
+        // Demucs se instaló ahí en el Paso 1.
+        const pythonProcess = spawn('python', [scriptPath, inputPath, randomId]);
 
         let dataString = '';
         let errorString = '';
 
-        // Capturar lo que imprime el Python (print)
+        // Escuchar logs normales
         pythonProcess.stdout.on('data', (data) => {
             const msg = data.toString();
             console.log(`🐍 Python: ${msg.trim()}`);
             dataString += msg;
         });
 
-        // Capturar errores de Python
+        // Escuchar errores
         pythonProcess.stderr.on('data', (data) => {
-            console.error(`🔴 Python Error: ${data.toString()}`);
-            errorString += data.toString();
+            const msg = data.toString();
+            // Demucs usa stderr para la barra de progreso, así que no siempre es error
+            console.log(`🔹 Demucs Info: ${msg.trim()}`);
+            errorString += msg;
         });
 
-        // Cuando Python termina
         pythonProcess.on('close', (code) => {
             if (code === 0) {
                 resolve({ success: true, logs: dataString });
             } else {
-                reject(new Error(`El proceso de Python falló con código ${code}. Error: ${errorString}`));
+                console.error("❌ Error final Python:", errorString);
+                reject(new Error(`El proceso falló con código ${code}`));
             }
         });
     });

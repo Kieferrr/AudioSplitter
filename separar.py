@@ -4,67 +4,85 @@ import subprocess
 from google.cloud import storage
 
 """
-Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]
+SCRIPT V3: Usa Demucs (Meta/Facebook) para separar audio.
+Correcciones: Sin emojis y comando de bitrate arreglado.
 """
 
 def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
     """Sube un archivo al bucket de Google Cloud Storage."""
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(destination_blob_name)
-    blob.upload_from_filename(local_file_path)
-    print(f"Archivo {local_file_path} subido a {bucket_name}/{destination_blob_name}.")
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_filename(local_file_path)
+        print(f"[OK] Subido a GCP: {destination_blob_name}")
+    except Exception as e:
+        print(f"[ERROR] Error subiendo {destination_blob_name}: {e}")
 
 def main():
+    # Forzar salida en utf-8 para evitar errores en consola de Windows
+    sys.stdout.reconfigure(encoding='utf-8')
+
     if len(sys.argv) < 3:
-        print("Faltan argumentos. Uso: python separar.py <ruta_audio_entrada> <randomId> [stems]")
+        print("Faltan argumentos. Uso: python separar.py <input> <randomId>")
         sys.exit(1)
 
     audio_input = sys.argv[1]
     random_id = sys.argv[2]
-    stems = sys.argv[3] if len(sys.argv) > 3 else "5"
+    
+    # Configuración de carpetas
+    output_base = os.path.join("public", "outputs", random_id)
+    
+    if not os.path.exists(output_base):
+        os.makedirs(output_base)
 
-    # Carpeta temporal (Ojo: en V2 usaremos rutas absolutas desde Node, pero esto sirve)
-    output_dir = os.path.join("public", "outputs", random_id)
+    print(f"[INFO] Procesando con Demucs ID: {random_id}")
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # Comando Spleeter
-    preset = f"spleeter:{stems}stems"
-    cmd = ["spleeter", "separate", "-p", preset, "-o", output_dir, audio_input]
+    # --- COMANDO DEMUCS ---
+    cmd = [
+        "demucs",
+        "-n", "htdemucs",
+        "--mp3",
+        "--mp3-bitrate", "192",  # <--- CORREGIDO: Antes decía solo --bitrate
+        "-o", output_base,
+        audio_input
+    ]
 
     try:
+        # Ejecutamos Demucs
         subprocess.run(cmd, check=True)
-        print("Separación completada correctamente.")
+        print("[INFO] Separacion Demucs completada.")
     except subprocess.CalledProcessError as e:
-        print("Error al ejecutar Spleeter:", e)
+        print(f"[ERROR] Error fatal al ejecutar Demucs: {e}")
         sys.exit(1)
 
-    # Subida a GCP
+    # --- SUBIDA A GOOGLE CLOUD ---
     bucket_name = os.environ.get("BUCKET_NAME")
     
     if bucket_name:
-        print(f"DEBUG: BUCKET_NAME detectado: {bucket_name}. Iniciando búsqueda...")
+        print(f"[INFO] Iniciando subida a bucket: {bucket_name}")
         files_found = False
         
-        for root, dirs, files in os.walk(output_dir):
-            for stem_file in files:
-                if stem_file.endswith(".wav"):
+        # Buscar archivos recursivamente
+        for root, dirs, files in os.walk(output_base):
+            for filename in files:
+                if filename.endswith(".mp3") or filename.endswith(".wav"):
                     files_found = True
-                    local_file_path = os.path.join(root, stem_file)
-                    destination_blob_name = f"stems/{random_id}/{stem_file}" 
+                    local_path = os.path.join(root, filename)
+                    
+                    # Ruta destino: stems/ID/vocals.mp3
+                    destination_blob = f"stems/{random_id}/{filename}"
                     
                     try:
-                        print(f"DEBUG: Subiendo {stem_file}...")
-                        upload_to_gcp(local_file_path, bucket_name, destination_blob_name)
+                        upload_to_gcp(local_path, bucket_name, destination_blob)
                     except Exception as exc:
-                        print(f"ERROR: No se pudo subir {stem_file} a GCP: {exc}")
+                        print(f"[ERROR GCP] {exc}")
         
         if not files_found:
-            print(f"ADVERTENCIA: No se encontraron archivos .wav en {output_dir}")
+            print("[WARN] Demucs termino pero no encontre archivos de audio para subir.")
+            
     else:
-        print("BUCKET_NAME no está definido; se omite la subida a GCP.")
+        print("[WARN] BUCKET_NAME no definido. Archivos quedaron en local.")
 
 if __name__ == '__main__':
     main()
