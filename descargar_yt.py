@@ -3,7 +3,7 @@ import os
 import yt_dlp
 import json
 
-# Forzar codificación UTF-8 para evitar errores de emojis/tildes en Windows
+# Forzar codificación UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
 def download_audio(youtube_url, random_id):
@@ -11,31 +11,40 @@ def download_audio(youtube_url, random_id):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Configuración de yt-dlp
+    # --- LÓGICA DE COOKIES ---
+    # Buscamos 'cookies.txt' en la carpeta actual (/app en Docker)
+    # Cloud Run montará el secreto justo aquí con este nombre.
+    cookie_file = 'cookies.txt'
+    use_cookies = os.path.exists(cookie_file)
+
     ydl_opts = {
         'format': 'bestaudio/best',
-        # Guardamos el archivo con el ID para encontrarlo fácil: uploads/123456.mp3
         'outtmpl': f'{output_dir}/{random_id}.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'quiet': True, # Menos ruido en consola
+        'quiet': True,
         'no_warnings': True,
+        # Aquí es donde le pasamos las cookies a la librería
+        'cookiefile': cookie_file if use_cookies else None
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # 1. Obtener información del video (Título)
+            # Info
             info = ydl.extract_info(youtube_url, download=False)
             video_title = info.get('title', 'YouTube Audio')
             
-            # 2. Descargar
-            print(f"[INFO] Descargando: {video_title}...")
+            # Log para saber si detectó las cookies
+            if use_cookies:
+                print(f"[INFO] 🍪 Cookies detectadas. Usando para: {video_title}...")
+            else:
+                print(f"[INFO] ⚠️ NO se detectaron cookies. Riesgo de bloqueo.")
+                
             ydl.download([youtube_url])
             
-            # 3. Devolver JSON a Node.js con los datos
             result = {
                 "success": True,
                 "filename": f"{random_id}.mp3",
