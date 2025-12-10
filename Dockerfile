@@ -1,34 +1,31 @@
-# Usamos una imagen base oficial de Node.js (versión ligera)
+# Usamos Node 20 (versión ligera) como base
 FROM node:20-slim
 
-# Instalamos Python 3, pip y FFmpeg (necesario para audio)
+# 1. INSTALACIÓN DE SISTEMA
+# Instalamos Python 3, Pip y FFmpeg (Vital para Demucs y yt-dlp)
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Creamos el directorio de trabajo dentro del contenedor
+# Fix para que 'python' llame a 'python3'
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Directorio de trabajo
 WORKDIR /app
 
-# Copiamos los archivos de dependencias de Node
+# 2. DEPENDENCIAS
 COPY package*.json ./
-
-# Instalamos las dependencias de Node (solo producción)
 RUN npm install --only=production
 
-# Copiamos el archivo de requerimientos de Python (lo crearemos en un momento)
 COPY requirements.txt ./
-
-# Instalamos las librerías de Python (Spleeter, Google Cloud)
-# Usamos --break-system-packages porque en contenedores es seguro hacerlo
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
-# Copiamos el resto del código fuente del proyecto
+# 3. CÓDIGO FUENTE
+# Copiamos todo el proyecto
 COPY . .
 
-# Exponemos el puerto 8080
+# 4. ARRANQUE
 EXPOSE 8080
-
-# Comando para iniciar el servidor
 CMD [ "node", "server.js" ]

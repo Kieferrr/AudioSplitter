@@ -12,31 +12,63 @@ export const downloadFromYoutube = (url, randomId) => {
         // Llamamos a python
         const pythonProcess = spawn('python', [scriptPath, url, randomId]);
 
-        let dataString = '';
+        let dataParts = [];
 
         pythonProcess.stdout.on('data', (data) => {
             const msg = data.toString();
-            // Solo nos interesa el JSON final, ignoramos logs de texto intermedios si los hubiera
-            if (msg.trim().startsWith('{')) {
-                dataString += msg;
-            } else {
+            dataParts.push(msg);
+
+            // Logueamos solo si no es JSON para no ensuciar, o si es un mensaje de progreso limpio
+            if (!msg.trim().startsWith('{')) {
                 console.log(`🎥 YT-DLP: ${msg.trim()}`);
             }
         });
 
         pythonProcess.stderr.on('data', (data) => {
-            console.error(`⚠️ YT Error: ${data.toString()}`);
+            console.error(`⚠️ YT Log: ${data.toString()}`);
+        });
+
+        pythonProcess.on('error', (err) => {
+            console.error("🔴 Error CRÍTICO al iniciar script YouTube:", err);
+            reject(new Error("No se pudo iniciar el descargador. ¿Está instalado Python?"));
         });
 
         pythonProcess.on('close', (code) => {
             try {
-                // Intentamos leer la respuesta JSON del script
-                const result = JSON.parse(dataString);
-                if (result.success) {
-                    resolve(result);
-                } else {
-                    reject(new Error(result.error));
+                // Unimos todo lo recibido
+                const fullOutput = dataParts.join('');
+
+                // --- NUEVA LÓGICA DE PARSEO ROBUSTA ---
+                // Dividimos por saltos de línea para analizar mensaje por mensaje
+                const lines = fullOutput.split('\n');
+                let successResult = null;
+                let errorResult = null;
+
+                for (const line of lines) {
+                    const cleanLine = line.trim();
+                    if (cleanLine.startsWith('{') && cleanLine.endsWith('}')) {
+                        try {
+                            const json = JSON.parse(cleanLine);
+                            if (json.success) {
+                                successResult = json;
+                                break; // ¡Encontramos el éxito! Dejamos de buscar.
+                            } else if (json.error) {
+                                errorResult = json;
+                            }
+                        } catch (e) {
+                            // Ignoramos líneas que parezcan JSON pero estén rotas
+                        }
+                    }
                 }
+
+                if (successResult) {
+                    resolve(successResult);
+                } else if (errorResult) {
+                    reject(new Error(errorResult.error));
+                } else {
+                    reject(new Error("No se recibió respuesta válida del descargador."));
+                }
+
             } catch (e) {
                 reject(new Error("Error al procesar la respuesta del descargador de YouTube"));
             }

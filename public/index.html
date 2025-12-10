@@ -4,72 +4,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AudioSplitter Pro V2</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <title>AudioSplitter AI</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://unpkg.com/wavesurfer.js@7"></script>
 </head>
 
 <body>
 
-    <div class="app-container">
-        <header class="header">
-            <div class="logo">
-                <span class="material-icons">graphic_eq</span> AudioSplitter <strong>Pro</strong>
-            </div>
-        </header>
+    <div class="background-area">
+        <ul class="circles">
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+        </ul>
+    </div>
 
-        <div class="upload-section" id="uploadSection">
+    <main class="main-wrapper">
+
+        <div class="glass-card">
+
+            <header class="app-header">
+                <h1>AudioSplitter <span class="accent">AI</span></h1>
+                <p class="subtitle">Separa voces e instrumentos con Inteligencia Artificial</p>
+            </header>
+
+            <div id="drop-zone" class="drop-zone">
+                <span class="material-icons upload-icon">cloud_upload</span>
+                <p>Arrastra tu archivo aquí o haz clic para buscar</p>
+                <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
+            </div>
+
+            <div class="divider">
+                <span>O USA YOUTUBE</span>
+            </div>
 
             <div class="youtube-box">
-                <input type="text" id="ytUrl" placeholder="Pega un link de YouTube aquí..." autocomplete="off">
-                <button id="btnYt" class="btn-yt">
-                    <span class="material-icons">search</span>
+                <div class="input-group">
+                    <span class="material-icons" style="color: #aaa;">link</span>
+                    <input type="text" id="youtubeInput" placeholder="Pega el link aquí (Ej: https://youtu.be/...)">
+                </div>
+                <button id="youtubeBtn" class="btn-primary">
+                    Procesar
                 </button>
             </div>
 
-            <div class="divider"><span>O sube un archivo</span></div>
-
-            <div class="drop-zone" id="dropZone">
-                <span class="material-icons upload-icon">cloud_upload</span>
-                <h2>Arrastra tu audio aquí</h2>
-                <p>o haz clic para buscar archivos</p>
-                <input type="file" id="fileInput" accept="audio/*" hidden>
-            </div>
-
-            <div class="loader-container hidden" id="loader">
+            <div id="loader" class="loader-container hidden">
                 <div class="spinner"></div>
-                <p id="loaderText">Procesando audio...</p> <small>Esto puede tardar un momento.</small>
-            </div>
-        </div>
-
-        <div class="daw-interface hidden" id="dawInterface">
-            <div class="transport-bar">
-                <button id="btnPlayPause" class="btn-transport">
-                    <span class="material-icons">play_arrow</span>
-                </button>
-                <button id="btnStop" class="btn-transport">
-                    <span class="material-icons">stop</span>
-                </button>
-
-                <div class="info-display">
-                    <div class="song-title-wrapper">
-                        <div class="song-title" id="songTitle">Esperando audio...</div>
-                    </div>
-                    <div class="time-display">
-                        <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
-                    </div>
-                </div>
-
-                <div class="global-actions">
-                    <button id="btnNewProject" class="btn-text" onclick="location.reload()">Nuevo Proyecto</button>
+                <p id="loader-text">Calentando motores de IA...</p>
+                <div class="progress-bar-container" style="display:none;">
+                    <div id="progress-bar" class="progress-bar"></div>
                 </div>
             </div>
 
-            <div class="tracks-container" id="tracksContainer"></div>
+            <div id="results-area" class="results-container hidden">
+            </div>
+
         </div>
-    </div>
+    </main>
+
+    <script src="https://unpkg.com/wavesurfer.js@7"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
     <script type="module" src="js/main.js"></script>
 
