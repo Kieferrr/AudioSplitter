@@ -158,7 +158,7 @@ h1 {
     margin-bottom: 30px;
 }
 
-/* --- HEADER REPRODUCTOR (MARQUEE GPU OPTIMIZADO) --- */
+/* --- HEADER REPRODUCTOR (LÓGICA MAIN RESTAURADA) --- */
 .player-top-row {
     position: relative;
     display: flex;
@@ -169,56 +169,49 @@ h1 {
     width: 100%;
 }
 
+/* Contenedor: Define la "ventana" visible */
 .player-title-container {
     flex: 1;
     overflow: hidden;
+    /* Corta lo que se salga */
     white-space: nowrap;
-    /* Máscara de desvanecimiento suave */
-    mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+    position: relative;
     margin: 0 15px;
     max-width: 400px;
-
-    /* OPTIMIZACIÓN DE CONTENEDOR */
-    transform: translateZ(0);
-    /* Aislar capa */
+    mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
 }
 
+/* Texto: El que se mueve */
 .player-title-text {
     display: inline-block;
     font-size: 1.4rem;
     color: #ffffff;
     font-weight: 600;
 
-    /* 1. VELOCIDAD: Aumentado a 25s para que sea legible y elegante */
-    animation: scroll-text 25s linear infinite;
+    /* TRUCO DEL MAIN: Empieza empujado fuera del contenedor */
     padding-left: 100%;
 
-    /* 2. FLUIDEZ EXTREMA (GPU) */
+    /* Animación lineal infinita */
+    animation: marquee 15s linear infinite;
+
+    /* Optimización GPU para que no tironee */
+    transform: translateZ(0);
     will-change: transform;
-    /* Avisa al navegador que esto se moverá */
-    transform: translate3d(0, 0, 0);
-    /* Fuerza el uso de la tarjeta gráfica */
-    backface-visibility: hidden;
-    /* Evita parpadeos en algunos monitores */
-    perspective: 1000px;
-    /* Mejora el renderizado de texto en movimiento */
-    -webkit-font-smoothing: antialiased;
-    /* Texto más nítido */
 }
 
-/* Animación usando translate3d para máximo rendimiento */
-@keyframes scroll-text {
+/* La misma animación exacta de tu Main */
+@keyframes marquee {
     0% {
-        transform: translate3d(0, 0, 0);
+        transform: translate(0, 0);
     }
 
     100% {
-        transform: translate3d(-100%, 0, 0);
+        transform: translate(-100%, 0);
     }
 }
 
-/* Botón Nuevo Proyecto (Sin cambios, pero incluido para contexto) */
+/* Botón Nuevo Proyecto (Igual) */
 .btn-new-project-absolute {
     position: absolute;
     right: 0;
