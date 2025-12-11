@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeInput = document.getElementById('youtubeInput');
     const youtubeBtn = document.getElementById('youtubeBtn');
 
+    // NUEVO: Capturamos el selector
+    const formatSelect = document.getElementById('formatSelect');
+
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
     const resultsArea = document.getElementById('results-area');
@@ -15,6 +18,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeBox = document.querySelector('.youtube-box');
     const divider = document.querySelector('.divider');
     const appHeader = document.querySelector('.app-header');
+
+    // Ocultar selector también al iniciar proceso
+    const formatContainer = document.querySelector('.format-selector-container');
 
     let tracks = [];
     let isPlaying = false;
@@ -65,11 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoader("Subiendo y procesando audio...");
         const formData = new FormData();
         formData.append('audioFile', file);
+        // Enviamos el formato seleccionado
+        formData.append('format', formatSelect.value);
+
         try {
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Error Servidor');
             const data = await response.json();
-            // Pasamos el zipUrl si existe
             initDAW(data.files, data.originalName, data.zip);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
@@ -80,11 +88,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/youtube', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ youtubeUrl: url })
+                body: JSON.stringify({
+                    youtubeUrl: url,
+                    format: formatSelect.value // Enviamos el formato en el JSON
+                })
             });
             if (!response.ok) throw new Error('Error Conexión');
             const data = await response.json();
-            // Pasamos el zipUrl si existe
             initDAW(data.files, data.originalName, data.zip);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
@@ -94,6 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.add('hidden');
         youtubeBox.classList.add('hidden');
         divider.classList.add('hidden');
+        if (formatContainer) formatContainer.style.display = 'none'; // Ocultar selector
+
         loaderText.textContent = text;
         loader.classList.remove('hidden');
     }
@@ -103,6 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.remove('hidden');
         youtubeBox.classList.remove('hidden');
         divider.classList.remove('hidden');
+        if (formatContainer) formatContainer.style.display = 'flex'; // Mostrar selector
+
         fileInput.value = ''; youtubeInput.value = '';
         dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
     }
@@ -119,27 +133,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // ESTILO DEL BOTÓN ZIP
+        // ESTILO DEL BOTÓN ZIP (Posición Absoluta Corregida)
         const zipButtonHTML = zipUrl ? `
             <a href="${zipUrl}" download target="_blank" 
-                style="
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    text-decoration: none;
-                    color: rgba(255, 255, 255, 0.7);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    background: rgba(255, 255, 255, 0.05);
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 0.85rem;
-                    transition: all 0.2s ease;
-                  margin-left: 10px; /* Separación del título */
-                  z-index: 30; /* Asegurar que esté encima de todo */
-                "
-                onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
-                onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
-                title="Descargar todo en ZIP">
+               style="
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  text-decoration: none;
+                  color: rgba(255, 255, 255, 0.7);
+                  border: 1px solid rgba(255, 255, 255, 0.2);
+                  background: rgba(255, 255, 255, 0.05);
+                  padding: 4px 12px;
+                  border-radius: 20px;
+                  font-size: 0.85rem;
+                  transition: all 0.2s ease;
+                  z-index: 30;
+               "
+               onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
+               onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
+               title="Descargar todo en ZIP">
                 <span class="material-icons" style="font-size: 16px;">folder_zip</span>
                 <span>ZIP</span>
             </a>
@@ -184,8 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div id="tracks-wrapper"></div>
         `;
-
-        // ... (El resto de la función initDAW sigue exactamente igual: listeners, sliders, tracks, etc)
 
         btnPlayPause = document.getElementById('btnPlayPause');
         btnStop = document.getElementById('btnStop');

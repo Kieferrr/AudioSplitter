@@ -5,32 +5,31 @@ import fs from 'fs';
 
 export const splitTrack = async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ message: 'No se subió ningún archivo.' });
-        }
+        if (!req.file) return res.status(400).json({ message: 'No file' });
 
         const inputPath = req.file.path;
         const randomId = Date.now().toString();
 
-        console.log(`📥 Archivo recibido: ${req.file.originalname}`);
+        // 1. CAPTURAR EL FORMATO (Si no envían nada, default mp3)
+        const format = req.body.format || 'mp3';
 
-        // Llamar a Python (Demucs)
-        await processAudio(inputPath, randomId);
+        console.log(`📥 Archivo: ${req.file.originalname} | Formato: ${format}`);
 
-        // ... (código anterior de stems) ...
+        // 2. PASAR FORMATO AL SERVICIO
+        await processAudio(inputPath, randomId, format);
 
         const stems = ['vocals', 'drums', 'bass', 'other'];
 
-        // Generar URLs de los audios
+        // 3. GENERAR URLS DINÁMICAS (Usando ${format})
         const filesUrls = stems.map(stem => {
             if (bucketName) {
-                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.mp3`;
+                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.${format}`;
             } else {
-                return `/outputs/${randomId}/${stem}.mp3`;
+                return `/outputs/${randomId}/${stem}.${format}`;
             }
         });
 
-        // --- NUEVO: Generar URL del ZIP ---
+        // El ZIP siempre es .zip, así que no cambia su extensión, pero sí su contenido
         let zipUrl = "";
         if (bucketName) {
             zipUrl = `https://storage.googleapis.com/${bucketName}/stems/${randomId}/full_mix.zip`;
@@ -38,23 +37,18 @@ export const splitTrack = async (req, res) => {
             zipUrl = `/outputs/${randomId}/full_mix.zip`;
         }
 
-        // Limpieza del archivo input...
         fs.unlink(inputPath, (err) => { if (err) console.error(err); });
 
-        // Responder
         res.json({
-            message: 'Separación completada con éxito',
+            message: 'Separación completada',
             processId: randomId,
             originalName: req.file.originalname,
             files: filesUrls,
-            zip: zipUrl // <--- Agregamos esto
+            zip: zipUrl
         });
 
     } catch (error) {
-        console.error('❌ Error en controlador:', error);
-        res.status(500).json({
-            message: 'Error interno del servidor.',
-            error: error.message
-        });
+        console.error('❌ Error:', error);
+        res.status(500).json({ message: 'Error interno', error: error.message });
     }
 };

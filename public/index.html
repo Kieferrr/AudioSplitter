@@ -9,9 +9,7 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico.png">
 
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-
     <link rel="stylesheet" href="css/style.css">
 </head>
 
@@ -40,6 +38,26 @@
                 <h1>AudioSplitter <span class="accent">AI</span></h1>
                 <p class="subtitle">Separa voces e instrumentos con Inteligencia Artificial</p>
             </header>
+
+            <div class="format-selector-container"
+                style="margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                <label for="formatSelect" style="color: #aaa; font-size: 0.9rem; font-weight: 600;">Formato:</label>
+                <select id="formatSelect" style="
+                    background: rgba(255, 255, 255, 0.05);
+                    color: white;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    padding: 6px 12px;
+                    border-radius: 8px;
+                    outline: none;
+                    cursor: pointer;
+                    font-family: inherit;
+                    transition: all 0.3s;
+                " onmouseover="this.style.borderColor='var(--accent-color)'"
+                    onmouseout="this.style.borderColor='rgba(255, 255, 255, 0.2)'">
+                    <option value="mp3" style="background: #222;">MP3 (Rápido)</option>
+                    <option value="wav" style="background: #222;">WAV (Alta Calidad)</option>
+                </select>
+            </div>
 
             <div id="drop-zone" class="drop-zone">
                 <span class="material-icons upload-icon">cloud_upload</span>
@@ -76,9 +94,7 @@
     </main>
 
     <script src="https://unpkg.com/wavesurfer.js@7"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
     <script type="module" src="js/main.js"></script>
 
 </body>

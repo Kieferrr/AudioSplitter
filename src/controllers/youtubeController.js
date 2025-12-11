@@ -5,35 +5,44 @@ import fs from 'fs';
 
 export const processYoutube = async (req, res) => {
     try {
-        const { youtubeUrl } = req.body;
+        // 1. AHORA CAPTURAMOS EL FORMATO TAMBIÉN
+        const { youtubeUrl, format } = req.body;
+        // Si no llega formato, usamos 'mp3' por defecto
+        const selectedFormat = format || 'mp3';
 
         if (!youtubeUrl) {
             return res.status(400).json({ message: 'Falta la URL de YouTube' });
         }
 
         const randomId = Date.now().toString();
-        console.log(`🔗 Procesando YouTube: ${youtubeUrl}`);
+        console.log(`🔗 Procesando YouTube: ${youtubeUrl} | Formato: ${selectedFormat}`);
 
-        // 1. Descargar
+        // 1. Descargar (Esto siempre baja un temporal, no importa el formato final)
         const downloadResult = await downloadFromYoutube(youtubeUrl, randomId);
-        console.log(`✅ Descarga completada: ${downloadResult.title}`);
 
-        // 2. Separar
-        await processAudio(downloadResult.path, randomId);
+        // 2. Separar (Pasamos el formato seleccionado a Python)
+        await processAudio(downloadResult.path, randomId, selectedFormat);
 
-        // 3. Generar URLs (HÍBRIDO)
+        // 3. Generar URLs (HÍBRIDO Y DINÁMICO)
         const stems = ['vocals', 'drums', 'bass', 'other'];
         const filesUrls = stems.map(stem => {
+            // Usamos selectedFormat para la extensión correcta (.mp3 o .wav)
             if (bucketName) {
-                // MODO NUBE
-                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.mp3`;
+                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.${selectedFormat}`;
             } else {
-                // MODO LOCAL
-                return `/outputs/${randomId}/${stem}.mp3`;
+                return `/outputs/${randomId}/${stem}.${selectedFormat}`;
             }
         });
 
-        // 4. Limpieza (Borrar el mp3 descargado)
+        // URL del ZIP (Siempre es .zip)
+        let zipUrl = "";
+        if (bucketName) {
+            zipUrl = `https://storage.googleapis.com/${bucketName}/stems/${randomId}/full_mix.zip`;
+        } else {
+            zipUrl = `/outputs/${randomId}/full_mix.zip`;
+        }
+
+        // 4. Limpieza (Borrar el archivo descargado de YT)
         fs.unlink(downloadResult.path, (err) => {
             if (err) console.error("Error borrando descarga temporal:", err);
         });
@@ -43,7 +52,8 @@ export const processYoutube = async (req, res) => {
             message: 'Procesamiento de YouTube exitoso',
             processId: randomId,
             originalName: downloadResult.title,
-            files: filesUrls
+            files: filesUrls,
+            zip: zipUrl
         });
 
     } catch (error) {
