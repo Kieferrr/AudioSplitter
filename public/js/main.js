@@ -2,23 +2,23 @@ import { TrackComponent } from './components/TrackComponent.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // 1. DOM
+    // 1. DOM ELEMENTS
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('fileInput');
     const youtubeInput = document.getElementById('youtubeInput');
     const youtubeBtn = document.getElementById('youtubeBtn');
 
     const formatSelect = document.getElementById('formatSelect');
+    const formatContainer = document.querySelector('.format-selector-container');
+
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
     const resultsArea = document.getElementById('results-area');
-
     const youtubeBox = document.querySelector('.youtube-box');
     const divider = document.querySelector('.divider');
     const appHeader = document.querySelector('.app-header');
 
-    const formatContainer = document.querySelector('.format-selector-container');
-
+    // Estado
     let tracks = [];
     let isPlaying = false;
     let globalDuration = 0;
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let sortableInstance = null;
     let globalMasterVolume = 1.0;
 
-    // 2. Listeners
+    // 2. LISTENERS
     dropZone.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', (e) => {
@@ -63,9 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
     youtubeInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') youtubeBtn.click(); });
 
 
-    // 3. API
+    // 3. API CALLS
     async function handleUpload(file) {
-        showLoader("Subiendo y procesando audio...");
+        showLoader("Subiendo y analizando audio...");
         const formData = new FormData();
         formData.append('audioFile', file);
         formData.append('format', formatSelect.value);
@@ -74,12 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Error Servidor');
             const data = await response.json();
-            initDAW(data.files, data.originalName, data.zip, data.instrumental);
+            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
     async function handleYoutube(url) {
-        showLoader("Procesando YouTube...");
+        showLoader("Descargando y procesando YouTube...");
         try {
             const response = await fetch('/api/youtube', {
                 method: 'POST',
@@ -91,11 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error('Error Conexión');
             const data = await response.json();
-            initDAW(data.files, data.originalName, data.zip, data.instrumental);
+            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
-    // 4. UI Helpers
+    // 4. UI HELPERS
     function showLoader(text) {
         dropZone.classList.add('hidden');
         youtubeBox.classList.add('hidden');
@@ -117,8 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
     }
 
-    // 5. DAW Init
-    function initDAW(filesUrls, originalName, zipUrl = null, instrumentalUrl = null) {
+    // 5. DAW INITIALIZATION
+    function initDAW(filesUrls, originalName, zipUrl = null, instrumentalUrl = null, bpm = 0, key = "Unknown") {
         loader.classList.add('hidden');
         appHeader.classList.add('hidden');
 
@@ -129,47 +129,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // ESTILO UNIFICADO (Sutil/Ghost)
-        const commonStyle = `
+        // --- A. BADGES DE BPM & KEY (ESTILO SUTIL/GHOST) ---
+        const badgeStyle = `
+            background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.15); 
+            padding: 3px 10px; 
+            border-radius: 12px; 
+            font-size: 0.75rem; 
+            font-family: monospace; 
+            color: rgba(255, 255, 255, 0.7); 
+            letter-spacing: 0.5px;
+        `;
+
+        const badgesHTML = (bpm > 0) ? `
+            <div style="display: flex; gap: 8px; margin-top: 6px; justify-content: center; opacity: 1;">
+                <span style="${badgeStyle}">BPM ${bpm}</span>
+                <span style="${badgeStyle}">KEY ${key}</span>
+            </div>
+        ` : '';
+
+        // --- B. BOTONES DESCARGA (ESTILO GHOST) ---
+        const btnStyle = `
             display: flex; align-items: center; gap: 6px; text-decoration: none;
             color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.2);
             background: rgba(255, 255, 255, 0.05); padding: 5px 12px; border-radius: 20px;
             font-size: 0.8rem; transition: all 0.2s ease;
         `;
+        const btnHover = "this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'";
+        const btnOut = "this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.6)'; this.style.background='rgba(255,255,255,0.05)'";
 
-        const hoverJs = "this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'";
-        const outJs = "this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.6)'; this.style.background='rgba(255,255,255,0.05)'";
-
-        // --- BOTÓN INSTRUMENTAL ---
         const instrButtonHTML = instrumentalUrl ? `
-            <a href="${instrumentalUrl}" download target="_blank" 
-               style="${commonStyle}"
-               onmouseover="${hoverJs}"
-               onmouseout="${outJs}"
-               title="Descargar Instrumental">
+            <a href="${instrumentalUrl}" download target="_blank" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}" title="Descargar Instrumental">
                 <span class="material-icons" style="font-size: 16px;">download</span>
                 <span>Instrumental</span>
             </a>
         ` : '';
 
-        // --- BOTÓN ZIP ---
         const zipButtonHTML = zipUrl ? `
-            <a href="${zipUrl}" download target="_blank" 
-               style="${commonStyle}"
-               onmouseover="${hoverJs}"
-               onmouseout="${outJs}"
-               title="Descargar Todo">
+            <a href="${zipUrl}" download target="_blank" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}" title="Descargar Todo (ZIP)">
                 <span class="material-icons" style="font-size: 16px;">download</span>
                 <span>ZIP</span>
             </a>
         ` : '';
 
+        // --- C. RENDERIZADO DEL HEADER ---
         resultsArea.innerHTML = `
             <div class="player-header">
-                
                 <div class="player-top-row">
-                    <div class="player-title-container">
-                        <span class="player-title-text" id="playerTitle">${safeTitle}</span>
+                    <div class="player-title-container" style="display: flex; flex-direction: column; justify-content: center; overflow: visible;">
+                        <div style="width: 100%; overflow: hidden; mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);">
+                             <span class="player-title-text" id="playerTitle">${safeTitle}</span>
+                        </div>
+                        ${badgesHTML}
                     </div>
 
                     <div style="position: absolute; right: 140px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px;">
@@ -219,8 +230,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tracksWrapper = document.getElementById('tracks-wrapper');
 
+        // --- D. COLORES DE STEMS (SIN KARAOKE) ---
         const stemConfig = {
-            'karaoke': { color: '#00FFFF' },
             'vocals': { color: '#FF4081' },
             'drums': { color: '#00E676' },
             'bass': { color: '#FFD740' },
@@ -233,8 +244,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const filename = url.split('/').pop().toLowerCase();
             let stemName = 'unknown';
 
-            if (filename.startsWith('karaoke')) stemName = 'karaoke';
-            else if (filename.startsWith('vocals')) stemName = 'vocals';
+            // Lógica de detección limpia (solo los 4 instrumentos)
+            if (filename.startsWith('vocals')) stemName = 'vocals';
             else if (filename.startsWith('drums')) stemName = 'drums';
             else if (filename.startsWith('bass')) stemName = 'bass';
             else if (filename.startsWith('other')) stemName = 'other';
@@ -269,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
         assignPlayerListeners(tracksWrapper);
     }
 
+    // 6. LOGICA REPRODUCTOR
     function assignPlayerListeners(container) {
         btnPlayPause.addEventListener('click', () => {
             if (isPlaying) {

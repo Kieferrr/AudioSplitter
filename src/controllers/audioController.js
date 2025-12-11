@@ -13,45 +13,52 @@ export const splitTrack = async (req, res) => {
 
         const inputPath = req.file.path;
         const randomId = Date.now().toString();
-        const format = req.body.format || 'mp3';
+        const format = req.body.format || 'mp3'; 
         const originalName = req.file.originalname;
         const songLabel = sanitizeFilename(originalName);
 
         console.log(`📥 Procesando: ${originalName} -> Label: ${songLabel}`);
 
-        await processAudio(inputPath, randomId, format, songLabel);
+        // --- CORRECCIÓN AQUÍ: Agregamos "const result =" ---
+        const result = await processAudio(inputPath, randomId, format, songLabel);
 
-        // 1. VOLVEMOS A LOS 4 STEMS ORIGINALES (Para que el player suene bien)
-        const stems = ['vocals', 'drums', 'bass', 'other'];
+        // 1. URLs de STEMS
+        const stems = ['karaoke', 'vocals', 'drums', 'bass', 'other']; // Karaoke no, porque lo manejamos aparte ahora?
+        // Ah, recuerda que habíamos sacado 'karaoke' de la lista visual.
+        // Solo usamos los 4 originales para el player:
+        const playerStems = ['vocals', 'drums', 'bass', 'other'];
 
-        const filesUrls = stems.map(stem => {
+        const filesUrls = playerStems.map(stem => {
             const fileName = `${stem}_${songLabel}.${format}`;
-            return bucketName
+            return bucketName 
                 ? `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`
                 : `/outputs/${randomId}/${fileName}`;
         });
 
-        // 2. GENERAMOS LA URL DEL INSTRUMENTAL APARTE
+        // 2. URL INSTRUMENTAL
         const instrName = `instrumental_${songLabel}.${format}`;
-        const instrUrl = bucketName
+        const instrUrl = bucketName 
             ? `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${instrName}`
             : `/outputs/${randomId}/${instrName}`;
 
-        // 3. GENERAMOS LA URL DEL ZIP
+        // 3. URL ZIP
         const zipName = `${songLabel}_Mix.zip`;
-        const zipUrl = bucketName
+        const zipUrl = bucketName 
             ? `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${zipName}`
             : `/outputs/${randomId}/${zipName}`;
 
         fs.unlink(inputPath, (err) => { if (err) console.error(err); });
 
+        // --- CORRECCIÓN AQUÍ: Usamos result.analysis ---
         res.json({
             message: 'Separación completada',
             processId: randomId,
             originalName: originalName,
-            files: filesUrls, // Solo los 4 reproductores
-            zip: zipUrl,      // Link ZIP
-            instrumental: instrUrl // <--- Link Instrumental Nuevo
+            bpm: result.analysis.bpm,   // Leemos del resultado
+            key: result.analysis.key,   // Leemos del resultado
+            files: filesUrls,
+            zip: zipUrl,
+            instrumental: instrUrl
         });
 
     } catch (error) {

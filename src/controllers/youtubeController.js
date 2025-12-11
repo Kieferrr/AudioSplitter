@@ -34,7 +34,7 @@ export const processYoutube = async (req, res) => {
 
         // 3. Separar Audio (Pasamos el formato y el label a Python)
         // Python generará: instrumental_label.format, vocals_label.format, etc.
-        await processAudio(downloadResult.path, randomId, selectedFormat, songLabel);
+        const result = await processAudio(downloadResult.path, randomId, selectedFormat, songLabel);
 
         // 4. Generar URLs para los REPRODUCTORES (Solo los 4 originales)
         const stems = ['vocals', 'drums', 'bass', 'other'];
@@ -79,6 +79,8 @@ export const processYoutube = async (req, res) => {
             message: 'Procesamiento de YouTube exitoso',
             processId: randomId,
             originalName: downloadResult.title,
+            bpm: result.analysis.bpm,   // <--- NUEVO
+            key: result.analysis.key,   // <--- NUEVO
             files: filesUrls,      // Array [URL, URL, URL, URL] para los reproductores
             zip: zipUrl,           // URL para el botón ZIP
             instrumental: instrUrl // URL para el botón Instrumental
