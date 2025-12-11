@@ -17,31 +17,37 @@ export const splitTrack = async (req, res) => {
         // Llamar a Python (Demucs)
         await processAudio(inputPath, randomId);
 
-        // Stems esperados
+        // ... (código anterior de stems) ...
+
         const stems = ['vocals', 'drums', 'bass', 'other'];
 
-        // --- LÓGICA HÍBRIDA DE URLS ---
+        // Generar URLs de los audios
         const filesUrls = stems.map(stem => {
             if (bucketName) {
-                // MODO NUBE: Link de Google Storage
                 return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.mp3`;
             } else {
-                // MODO LOCAL: Link relativo a tu servidor
                 return `/outputs/${randomId}/${stem}.mp3`;
             }
         });
 
-        // Limpieza: Borramos SIEMPRE el archivo original subido (input)
-        fs.unlink(inputPath, (err) => {
-            if (err) console.error("Error borrando temporal:", err);
-        });
+        // --- NUEVO: Generar URL del ZIP ---
+        let zipUrl = "";
+        if (bucketName) {
+            zipUrl = `https://storage.googleapis.com/${bucketName}/stems/${randomId}/full_mix.zip`;
+        } else {
+            zipUrl = `/outputs/${randomId}/full_mix.zip`;
+        }
+
+        // Limpieza del archivo input...
+        fs.unlink(inputPath, (err) => { if (err) console.error(err); });
 
         // Responder
         res.json({
             message: 'Separación completada con éxito',
             processId: randomId,
             originalName: req.file.originalname,
-            files: filesUrls
+            files: filesUrls,
+            zip: zipUrl // <--- Agregamos esto
         });
 
     } catch (error) {

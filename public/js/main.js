@@ -69,7 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Error Servidor');
             const data = await response.json();
-            initDAW(data.files, data.originalName);
+            // Pasamos el zipUrl si existe
+            initDAW(data.files, data.originalName, data.zip);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
@@ -83,7 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error('Error Conexión');
             const data = await response.json();
-            initDAW(data.files, data.originalName);
+            // Pasamos el zipUrl si existe
+            initDAW(data.files, data.originalName, data.zip);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
@@ -106,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 5. DAW Init
-    function initDAW(filesUrls, originalName) {
+    function initDAW(filesUrls, originalName, zipUrl = null) {
         loader.classList.add('hidden');
         appHeader.classList.add('hidden');
 
@@ -117,13 +119,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // HTML SIMPLIFICADO: Usamos la estructura de tu código antiguo
+        // ESTILO DEL BOTÓN ZIP
+        const zipButtonHTML = zipUrl ? `
+            <a href="${zipUrl}" download target="_blank" 
+                style="
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    text-decoration: none;
+                    color: rgba(255, 255, 255, 0.7);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    background: rgba(255, 255, 255, 0.05);
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    transition: all 0.2s ease;
+                  margin-left: 10px; /* Separación del título */
+                  z-index: 30; /* Asegurar que esté encima de todo */
+                "
+                onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
+                onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
+                title="Descargar todo en ZIP">
+                <span class="material-icons" style="font-size: 16px;">folder_zip</span>
+                <span>ZIP</span>
+            </a>
+        ` : '';
+
         resultsArea.innerHTML = `
             <div class="player-header">
                 
                 <div class="player-top-row">
                     <div class="player-title-container">
                         <span class="player-title-text" id="playerTitle">${safeTitle}</span>
+                    </div>
+
+                    <div style="position: absolute; right: 140px; top: 50%; transform: translateY(-50%);">
+                        ${zipButtonHTML}
                     </div>
                     
                     <button id="btnReset" class="btn-new-project-absolute">
@@ -154,6 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="tracks-wrapper"></div>
         `;
 
+        // ... (El resto de la función initDAW sigue exactamente igual: listeners, sliders, tracks, etc)
+
         btnPlayPause = document.getElementById('btnPlayPause');
         btnStop = document.getElementById('btnStop');
         currentTimeSpan = document.getElementById('currentTime');
@@ -165,8 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
             globalMasterVolume = parseFloat(e.target.value);
             tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
         };
-
-        // NOTA: Eliminamos checkTitleOverflow porque ahora el CSS hace todo el trabajo automáticamente.
 
         const tracksWrapper = document.getElementById('tracks-wrapper');
 
@@ -230,7 +261,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentTimeSpan.textContent = "00:00";
         });
 
-        // Eventos Centralizados
         container.addEventListener('track-solo', (e) => handleSoloExclusive(e.detail.name));
         container.addEventListener('track-mute', () => refreshAllTracksState());
         container.addEventListener('track-seek', (e) => syncAllTracks(e.detail.progress, e.detail.sourceTrack));

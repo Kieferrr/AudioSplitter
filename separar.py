@@ -16,7 +16,7 @@ def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
         print(f"[ERROR] Error subiendo {destination_blob_name}: {e}")
 
 def main():
-    # Forzar salida en utf-8 para que Windows no falle con caracteres raros
+    # Forzar salida en utf-8
     sys.stdout.reconfigure(encoding='utf-8')
 
     if len(sys.argv) < 3:
@@ -26,7 +26,7 @@ def main():
     audio_input = sys.argv[1]
     random_id = sys.argv[2]
     
-    # Esta es la carpeta raiz del ID (ej: public/outputs/12345)
+    # Carpeta donde están los MP3 (ej: public/outputs/12345)
     output_base = os.path.join("public", "outputs", random_id)
     
     if not os.path.exists(output_base):
@@ -52,37 +52,48 @@ def main():
         sys.exit(1)
 
     # ==========================================
-    # NUEVO: APLANAR CARPETAS (La Solución)
+    # 1. APLANAR CARPETAS
     # ==========================================
-    # Demucs crea subcarpetas (htdemucs/cancion/...). 
-    # Vamos a sacar los mp3 de ahí y ponerlos en la raíz de output_base.
     print("[INFO] Organizando archivos...")
     
     for root, dirs, files in os.walk(output_base):
         if root == output_base:
-            continue # No procesar la carpeta raíz todavía
+            continue 
             
         for filename in files:
             if filename.endswith(".mp3") or filename.endswith(".wav"):
                 source_path = os.path.join(root, filename)
                 dest_path = os.path.join(output_base, filename)
-                
-                # Mover archivo a la raíz del ID
-                # Si ya existe (raro), lo sobreescribe
                 shutil.move(source_path, dest_path)
-                print(f"[INFO] Movido: {filename} -> Raíz")
 
-    # Opcional: Borrar las carpetas vacías que dejó Demucs (htdemucs, etc)
-    # para que quede limpio
+    # Limpiar carpetas vacías
     for root, dirs, files in os.walk(output_base, topdown=False):
         for name in dirs:
             try:
                 os.rmdir(os.path.join(root, name))
             except OSError:
-                pass # Si no está vacía, la dejamos
+                pass 
 
     # ==========================================
-    # LÓGICA HÍBRIDA: NUBE vs LOCAL
+    # 2. CREAR ARCHIVO .ZIP (CORREGIDO) 📦
+    # ==========================================
+    print("[INFO] Creando archivo ZIP...")
+    
+    # TRUCO: Creamos el zip UN NIVEL ARRIBA (en public/outputs) para no crear bucle infinito
+    # Nombre temporal: public/outputs/12345_temp
+    zip_temp_name = os.path.join("public", "outputs", f"{random_id}_temp")
+    
+    # Esto crea public/outputs/12345_temp.zip
+    shutil.make_archive(zip_temp_name, 'zip', output_base)
+    
+    # Ahora movemos el ZIP terminado ADENTRO de la carpeta 12345
+    final_zip_path = os.path.join(output_base, "full_mix.zip")
+    shutil.move(f"{zip_temp_name}.zip", final_zip_path)
+    
+    print(f"[OK] ZIP creado y movido a: {final_zip_path}")
+
+    # ==========================================
+    # 3. LÓGICA HÍBRIDA: NUBE vs LOCAL
     # ==========================================
     bucket_name = os.environ.get("BUCKET_NAME")
     
@@ -93,29 +104,28 @@ def main():
         
         files_found = False
         
-        # Ahora los archivos están ordenaditos en la raíz
         for filename in os.listdir(output_base):
-            if filename.endswith(".mp3") or filename.endswith(".wav"):
+            # Subimos MP3s y el ZIP
+            if filename.endswith(".mp3") or filename.endswith(".wav") or filename.endswith(".zip"):
                 files_found = True
                 local_path = os.path.join(output_base, filename)
                 destination_blob = f"stems/{random_id}/{filename}"
                 upload_to_gcp(local_path, bucket_name, destination_blob)
         
         if not files_found:
-            print("[WARN] No encontré archivos MP3 para subir.")
+            print("[WARN] No encontré archivos para subir.")
 
-        print(f"[INFO] Limpiando archivos temporales locales (Modo Nube)...")
+        # Limpieza Local
         try:
             shutil.rmtree(output_base)
-            print("[OK] Limpieza completada.")
+            print("[OK] Limpieza temporal completada.")
         except Exception as e:
             print(f"[WARN] No se pudo borrar carpeta temporal: {e}")
 
     else:
         # MODO LOCAL
-        print("[INFO] BUCKET_NAME no definido. Modo Local activado.")
-        print(f"[INFO] Los archivos están listos en: {output_base}")
-        print("[INFO] NO se borrarán los archivos para que Node pueda servirlos.")
+        print("[INFO] Modo Local. Archivos listos en disco.")
+        print(f"[INFO] ZIP disponible en: {output_base}/full_mix.zip")
 
 if __name__ == '__main__':
     main()
