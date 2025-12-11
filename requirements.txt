@@ -1,6 +1,9 @@
-google-cloud-storage
+torch==2.3.1
+torchaudio==2.3.1
 demucs
 yt-dlp
-soundfile
+google-cloud-storage
 librosa
 numpy
+soundfile
+ffmpeg-python
