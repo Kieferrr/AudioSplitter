@@ -1,5 +1,5 @@
 import { downloadFromYoutube } from '../services/youtubeService.js';
-import { processAudio } from '../services/audioService.js'; // ¡Reutilizamos esto!
+import { processAudio } from '../services/audioService.js';
 import { bucketName } from '../config/storage.js';
 import fs from 'fs';
 
@@ -14,21 +14,26 @@ export const processYoutube = async (req, res) => {
         const randomId = Date.now().toString();
         console.log(`🔗 Procesando YouTube: ${youtubeUrl}`);
 
-        // 1. Descargar audio desde YouTube (Python yt-dlp)
+        // 1. Descargar
         const downloadResult = await downloadFromYoutube(youtubeUrl, randomId);
         console.log(`✅ Descarga completada: ${downloadResult.title}`);
 
-        // 2. Separar audio (Python Demucs - Reutilizado)
-        // downloadResult.path es "uploads/123456.mp3"
+        // 2. Separar
         await processAudio(downloadResult.path, randomId);
 
-        // 3. Generar URLs
+        // 3. Generar URLs (HÍBRIDO)
         const stems = ['vocals', 'drums', 'bass', 'other'];
         const filesUrls = stems.map(stem => {
-            return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.mp3`;
+            if (bucketName) {
+                // MODO NUBE
+                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.mp3`;
+            } else {
+                // MODO LOCAL
+                return `/outputs/${randomId}/${stem}.mp3`;
+            }
         });
 
-        // 4. Limpieza (Borrar el mp3 descargado de uploads)
+        // 4. Limpieza (Borrar el mp3 descargado)
         fs.unlink(downloadResult.path, (err) => {
             if (err) console.error("Error borrando descarga temporal:", err);
         });
@@ -37,7 +42,7 @@ export const processYoutube = async (req, res) => {
         res.json({
             message: 'Procesamiento de YouTube exitoso',
             processId: randomId,
-            originalName: downloadResult.title, // Enviamos el título del video
+            originalName: downloadResult.title,
             files: filesUrls
         });
 

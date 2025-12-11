@@ -3,38 +3,56 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import apiRoutes from './src/routes/api.js';
+import { bucketName } from './src/config/storage.js';
 
 // 1. Configuración Inicial
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Configurar __dirname para ES Modules (Node moderno)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Definir rutas base
+const publicDir = path.join(process.cwd(), 'public');
+const outputsDir = path.join(publicDir, 'outputs');
 
-// 2. Middlewares (Herramientas intermedias)
-app.use(cors()); // Permitir conexiones externas
-app.use(express.json()); // Entender JSON
-app.use(express.static(path.join(__dirname, 'public'))); // Servir la página web
+// --- LIMPIEZA AUTOMÁTICA AL INICIAR (SOLO MODO LOCAL) ---
+if (!bucketName) {
+  if (fs.existsSync(outputsDir)) {
+    try {
+      fs.rmSync(outputsDir, { recursive: true, force: true });
+      fs.mkdirSync(outputsDir);
+    } catch (e) {
+      console.log("⚠️ No se pudo limpiar la carpeta temporal anterior.");
+    }
+  } else {
+    fs.mkdirSync(outputsDir, { recursive: true });
+  }
+}
 
-// 3. Rutas de Prueba
-// Esto es para ver si el servidor respira
-app.get('/ping', (req, res) => {
-    res.send('pong 🏓 - El servidor V2 está vivo');
-});
+// 2. Middlewares
+app.use(cors());
+app.use(express.json());
 
-// Rutas de la API
+// 3. Configuración de Archivos Estáticos (Vital para que funcionen los audios)
+// Prioridad: Servir carpeta outputs explícitamente
+app.use('/outputs', express.static(outputsDir));
+// Servir el resto de la web
+app.use(express.static(publicDir));
+
+// 4. Rutas
+app.get('/ping', (req, res) => res.send('pong 🏓'));
 app.use('/api', apiRoutes);
 
-// 4. Iniciar Servidor
+// 5. Iniciar Servidor
 app.listen(PORT, () => {
-    console.log(`
+  console.log(`
   ==========================================
-  🚀 SERVIDOR V2 LISTO
-  📡 URL: http://localhost:${PORT}
-  📦 Ambiente: ${process.env.NODE_ENV || 'development'}
+  🚀 AUDIO SPLITTER V2 - SERVIDOR ACTIVO
+  ==========================================
+  📡 URL:  http://localhost:${PORT}
+  📦 Modo: ${bucketName ? '☁️ NUBE (GCP)' : '💻 LOCAL (Disco Duro)'}
+  📂 Outputs: ${bucketName ? 'Google Storage' : '/public/outputs'}
   ==========================================
   `);
 });
