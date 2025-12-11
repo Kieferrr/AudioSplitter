@@ -3,51 +3,56 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs'; // Importamos fs para verificar existencia
+import fs from 'fs';
 import apiRoutes from './src/routes/api.js';
+import { bucketName } from './src/config/storage.js';
 
 // 1. Configuración Inicial
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Definir rutas base
+const publicDir = path.join(process.cwd(), 'public');
+const outputsDir = path.join(publicDir, 'outputs');
+
+// --- LIMPIEZA AUTOMÁTICA AL INICIAR (SOLO MODO LOCAL) ---
+if (!bucketName) {
+  if (fs.existsSync(outputsDir)) {
+    try {
+      fs.rmSync(outputsDir, { recursive: true, force: true });
+      fs.mkdirSync(outputsDir);
+    } catch (e) {
+      console.log("⚠️ No se pudo limpiar la carpeta temporal anterior.");
+    }
+  } else {
+    fs.mkdirSync(outputsDir, { recursive: true });
+  }
+}
+
 // 2. Middlewares
 app.use(cors());
 app.use(express.json());
 
-// --- CORRECCIÓN DE RUTAS (LA SOLUCIÓN) ---
-// Usamos process.cwd() que apunta a la raíz del proyecto (C:\Users\Kiefer\Desktop\AudioSplitter)
-const publicDir = path.join(process.cwd(), 'public');
-const outputsDir = path.join(publicDir, 'outputs');
-
-console.log("------------------------------------------------");
-console.log("🔍 DIAGNÓSTICO DE RUTAS:");
-console.log("📂 Raíz del proyecto:", process.cwd());
-console.log("📂 Carpeta Public:", publicDir);
-console.log("📂 Carpeta Outputs:", outputsDir);
-
-// Verificar si la carpeta existe físicamente
-if (fs.existsSync(outputsDir)) {
-  console.log("✅ La carpeta 'outputs' EXISTE físicamente.");
-} else {
-  console.log("❌ ALERTA: La carpeta 'outputs' NO fue encontrada en esa ruta.");
-}
-console.log("------------------------------------------------");
-
-// Forzar el servicio de la carpeta outputs
+// 3. Configuración de Archivos Estáticos (Vital para que funcionen los audios)
+// Prioridad: Servir carpeta outputs explícitamente
 app.use('/outputs', express.static(outputsDir));
-
-// Servir el resto de la carpeta public (index.html, css, js)
+// Servir el resto de la web
 app.use(express.static(publicDir));
 
-// 3. Rutas
-app.get('/ping', (req, res) => {
-  res.send('pong 🏓 - El servidor V2 está vivo');
-});
-
+// 4. Rutas
+app.get('/ping', (req, res) => res.send('pong 🏓'));
 app.use('/api', apiRoutes);
 
-// 4. Iniciar Servidor
+// 5. Iniciar Servidor
 app.listen(PORT, () => {
-  console.log(`🚀 SERVIDOR CORRIENDO EN: http://localhost:${PORT}`);
+  console.log(`
+  ==========================================
+  🚀 AUDIO SPLITTER V2 - SERVIDOR ACTIVO
+  ==========================================
+  📡 URL:  http://localhost:${PORT}
+  📦 Modo: ${bucketName ? '☁️ NUBE (GCP)' : '💻 LOCAL (Disco Duro)'}
+  📂 Outputs: ${bucketName ? 'Google Storage' : '/public/outputs'}
+  ==========================================
+  `);
 });
