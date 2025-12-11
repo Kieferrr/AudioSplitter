@@ -5,16 +5,21 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Inicializar el cliente de Storage
-// Nota: En local busca tus credenciales de gcloud. En la nube usa la cuenta de servicio.
-const storage = new Storage();
 const bucketName = process.env.BUCKET_NAME;
+let bucket = null;
 
-if (!bucketName) {
-    console.error("❌ ERROR: No se definió BUCKET_NAME en el archivo .env");
+if (bucketName) {
+    // MODO NUBE (Producción)
+    try {
+        const storage = new Storage();
+        bucket = storage.bucket(bucketName);
+        console.log(`✅ Configuración de Storage cargada para bucket: ${bucketName}`);
+    } catch (error) {
+        console.error("❌ Error conectando a Google Cloud Storage:", error.message);
+    }
+} else {
+    // MODO LOCAL (Tu hermano)
+    console.log("⚠️ BUCKET_NAME no definido. Iniciando en MODO LOCAL (Archivos en disco).");
 }
-
-const bucket = storage.bucket(bucketName);
-
-console.log(`✅ Configuración de Storage cargada para bucket: ${bucketName}`);
 
 export { bucket, bucketName };
