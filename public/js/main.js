@@ -8,9 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeInput = document.getElementById('youtubeInput');
     const youtubeBtn = document.getElementById('youtubeBtn');
 
-    // NUEVO: Capturamos el selector
     const formatSelect = document.getElementById('formatSelect');
-
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
     const resultsArea = document.getElementById('results-area');
@@ -19,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const divider = document.querySelector('.divider');
     const appHeader = document.querySelector('.app-header');
 
-    // Ocultar selector también al iniciar proceso
     const formatContainer = document.querySelector('.format-selector-container');
 
     let tracks = [];
@@ -71,14 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoader("Subiendo y procesando audio...");
         const formData = new FormData();
         formData.append('audioFile', file);
-        // Enviamos el formato seleccionado
         formData.append('format', formatSelect.value);
 
         try {
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Error Servidor');
             const data = await response.json();
-            initDAW(data.files, data.originalName, data.zip);
+            initDAW(data.files, data.originalName, data.zip, data.instrumental);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
@@ -90,12 +86,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     youtubeUrl: url,
-                    format: formatSelect.value // Enviamos el formato en el JSON
+                    format: formatSelect.value
                 })
             });
             if (!response.ok) throw new Error('Error Conexión');
             const data = await response.json();
-            initDAW(data.files, data.originalName, data.zip);
+            initDAW(data.files, data.originalName, data.zip, data.instrumental);
         } catch (error) { console.error(error); alert(error.message); resetUI(); }
     }
 
@@ -104,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.add('hidden');
         youtubeBox.classList.add('hidden');
         divider.classList.add('hidden');
-        if (formatContainer) formatContainer.style.display = 'none'; // Ocultar selector
+        if (formatContainer) formatContainer.style.display = 'none';
 
         loaderText.textContent = text;
         loader.classList.remove('hidden');
@@ -115,14 +111,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.remove('hidden');
         youtubeBox.classList.remove('hidden');
         divider.classList.remove('hidden');
-        if (formatContainer) formatContainer.style.display = 'flex'; // Mostrar selector
+        if (formatContainer) formatContainer.style.display = 'flex';
 
         fileInput.value = ''; youtubeInput.value = '';
         dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
     }
 
     // 5. DAW Init
-    function initDAW(filesUrls, originalName, zipUrl = null) {
+    function initDAW(filesUrls, originalName, zipUrl = null, instrumentalUrl = null) {
         loader.classList.add('hidden');
         appHeader.classList.add('hidden');
 
@@ -133,27 +129,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // ESTILO DEL BOTÓN ZIP (Posición Absoluta Corregida)
+        // ESTILO UNIFICADO (Sutil/Ghost)
+        const commonStyle = `
+            display: flex; align-items: center; gap: 6px; text-decoration: none;
+            color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05); padding: 5px 12px; border-radius: 20px;
+            font-size: 0.8rem; transition: all 0.2s ease;
+        `;
+
+        const hoverJs = "this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'";
+        const outJs = "this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.6)'; this.style.background='rgba(255,255,255,0.05)'";
+
+        // --- BOTÓN INSTRUMENTAL ---
+        const instrButtonHTML = instrumentalUrl ? `
+            <a href="${instrumentalUrl}" download target="_blank" 
+               style="${commonStyle}"
+               onmouseover="${hoverJs}"
+               onmouseout="${outJs}"
+               title="Descargar Instrumental">
+                <span class="material-icons" style="font-size: 16px;">download</span>
+                <span>Instrumental</span>
+            </a>
+        ` : '';
+
+        // --- BOTÓN ZIP ---
         const zipButtonHTML = zipUrl ? `
             <a href="${zipUrl}" download target="_blank" 
-                style="
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    text-decoration: none;
-                    color: rgba(255, 255, 255, 0.7);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    background: rgba(255, 255, 255, 0.05);
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 0.85rem;
-                    transition: all 0.2s ease;
-                    z-index: 30;
-                "
-                onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
-                onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
-                title="Descargar todo en ZIP">
-                <span class="material-icons" style="font-size: 16px;">folder_zip</span>
+               style="${commonStyle}"
+               onmouseover="${hoverJs}"
+               onmouseout="${outJs}"
+               title="Descargar Todo">
+                <span class="material-icons" style="font-size: 16px;">download</span>
                 <span>ZIP</span>
             </a>
         ` : '';
@@ -166,7 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="player-title-text" id="playerTitle">${safeTitle}</span>
                     </div>
 
-                    <div style="position: absolute; right: 140px; top: 50%; transform: translateY(-50%);">
+                    <div style="position: absolute; right: 140px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px;">
+                        ${instrButtonHTML}
                         ${zipButtonHTML}
                     </div>
                     
@@ -213,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tracksWrapper = document.getElementById('tracks-wrapper');
 
         const stemConfig = {
+            'karaoke': { color: '#00FFFF' },
             'vocals': { color: '#FF4081' },
             'drums': { color: '#00E676' },
             'bass': { color: '#FFD740' },
@@ -222,27 +230,19 @@ document.addEventListener('DOMContentLoaded', () => {
         tracks = [];
 
         filesUrls.forEach((url) => {
-            // 1. Obtener el nombre del archivo completo (ej: vocals_metallica.wav)
             const filename = url.split('/').pop().toLowerCase();
-
-            // 2. DETECTAR EL STEM (Limpieza visual)
-            // Verificamos con qué palabra EMPIEZA el archivo para asignar el rol correcto
             let stemName = 'unknown';
 
-            if (filename.startsWith('vocals')) stemName = 'vocals';
+            if (filename.startsWith('karaoke')) stemName = 'karaoke';
+            else if (filename.startsWith('vocals')) stemName = 'vocals';
             else if (filename.startsWith('drums')) stemName = 'drums';
             else if (filename.startsWith('bass')) stemName = 'bass';
             else if (filename.startsWith('other')) stemName = 'other';
 
-            // Si no es ninguno (caso raro), usamos el nombre completo
             if (stemName === 'unknown') stemName = filename.split('.')[0];
 
-            // 3. Buscar color basado en el nombre limpio ('vocals', no 'vocals_metallica')
             const config = stemConfig[stemName] || { color: '#00d2ff' };
 
-            // 4. Crear el track. 
-            // Nota: Pasamos 'stemName' para que en la pantalla salga "VOCALS" 
-            // pero pasamos 'url' para que el audio cargue el archivo correcto renombrado.
             const track = new TrackComponent(tracksWrapper, stemName, url, config.color);
             tracks.push(track);
         });

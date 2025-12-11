@@ -17,7 +17,6 @@ def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
 def main():
     sys.stdout.reconfigure(encoding='utf-8')
 
-    # Argumentos: script, input, id, format, songLabel
     if len(sys.argv) < 5:
         print("[WARN] Faltan argumentos, usando valores por defecto.")
         audio_format = "mp3"
@@ -50,28 +49,30 @@ def main():
         sys.exit(1)
 
     # ==========================================
-    # 1. ORGANIZAR Y RENOMBRAR (Tu Lógica)
+    # 1. ORGANIZAR Y RENOMBRAR
     # ==========================================
     print("[INFO] Renombrando archivos...")
     
     target_ext = f".{audio_format}"
     
+    # Diccionario para guardar las rutas de los archivos generados y usarlos en la mezcla
+    generated_files = {} 
+
     for root, dirs, files in os.walk(output_base):
         if root == output_base: continue 
             
         for filename in files:
             if filename.endswith(target_ext):
-                # filename actual: "vocals.mp3"
-                # stem_name: "vocals"
-                stem_name = filename.replace(target_ext, "")
-                
-                # TU LÓGICA: vocals_metallica_one.mp3
+                stem_name = filename.replace(target_ext, "") # vocals, drums, etc.
                 new_filename = f"{stem_name}_{song_label}{target_ext}"
                 
                 source_path = os.path.join(root, filename)
                 dest_path = os.path.join(output_base, new_filename)
                 
                 shutil.move(source_path, dest_path)
+                
+                # Guardamos la ruta para usarla después
+                generated_files[stem_name] = dest_path
                 print(f" -> {new_filename}")
 
     # Limpiar carpetas vacías
@@ -80,15 +81,44 @@ def main():
             try: os.rmdir(os.path.join(root, name))
             except OSError: pass 
 
+   # ==========================================
+    # 2. GENERAR PISTA INSTRUMENTAL (MEZCLA) 🎸
     # ==========================================
-    # 2. CREAR ZIP
+    # Mezclamos: drums + bass + other = instrumental
+    
+    if 'drums' in generated_files and 'bass' in generated_files and 'other' in generated_files:
+        print("[INFO] Generando pista Instrumental...")
+        
+        # CAMBIO DE NOMBRE: karaoke -> instrumental
+        instr_filename = f"instrumental_{song_label}{target_ext}"
+        instr_path = os.path.join(output_base, instr_filename)
+
+        mix_cmd = [
+            "ffmpeg", "-y",
+            "-i", generated_files['drums'],
+            "-i", generated_files['bass'],
+            "-i", generated_files['other'],
+            "-filter_complex", "amix=inputs=3:duration=first:dropout_transition=0:normalize=0",
+            instr_path
+        ]
+        
+        try:
+            subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[OK] Instrumental creado: {instr_filename}")
+        except subprocess.CalledProcessError:
+            print("[WARN] No se pudo crear el Instrumental.")
+    else:
+        print("[WARN] Faltan pistas para crear el Instrumental.")
+
+
+    # ==========================================
+    # 3. CREAR ZIP
     # ==========================================
     print("[INFO] Creando ZIP...")
     
     zip_temp_name = os.path.join("public", "outputs", f"{random_id}_temp")
     shutil.make_archive(zip_temp_name, 'zip', output_base)
     
-    # Nombre del ZIP: metallica_one_Mix.zip
     final_zip_name = f"{song_label}_Mix.zip"
     final_zip_path = os.path.join(output_base, final_zip_name)
     
@@ -96,7 +126,7 @@ def main():
     print(f"[OK] ZIP creado: {final_zip_name}")
 
     # ==========================================
-    # 3. LÓGICA HÍBRIDA
+    # 4. LÓGICA HÍBRIDA
     # ==========================================
     bucket_name = os.environ.get("BUCKET_NAME")
     
