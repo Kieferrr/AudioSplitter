@@ -3,38 +3,52 @@ import { bucketName } from '../config/storage.js';
 import path from 'path';
 import fs from 'fs';
 
+// Función para limpiar nombres (Sanitize)
+const sanitizeFilename = (name) => {
+    return name
+        .replace(/\.[^/.]+$/, "") // Quitar extensión original
+        .replace(/[^a-zA-Z0-9]/g, "_") // Símbolos a guion bajo
+        .replace(/_+/g, "_") // Evitar __ dobles
+        .toLowerCase(); // Todo minúscula
+};
+
 export const splitTrack = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file' });
 
         const inputPath = req.file.path;
         const randomId = Date.now().toString();
-
-        // 1. CAPTURAR EL FORMATO (Si no envían nada, default mp3)
         const format = req.body.format || 'mp3';
 
-        console.log(`📥 Archivo: ${req.file.originalname} | Formato: ${format}`);
+        // 1. GENERAR ETIQUETA LIMPIA
+        const originalName = req.file.originalname;
+        const songLabel = sanitizeFilename(originalName);
 
-        // 2. PASAR FORMATO AL SERVICIO
-        await processAudio(inputPath, randomId, format);
+        console.log(`📥 Procesando: ${originalName} -> Label: ${songLabel}`);
+
+        // 2. PASAR LABEL A PYTHON
+        await processAudio(inputPath, randomId, format, songLabel);
 
         const stems = ['vocals', 'drums', 'bass', 'other'];
 
-        // 3. GENERAR URLS DINÁMICAS (Usando ${format})
+        // 3. GENERAR URLS (Formato: vocals_metallica_one.wav)
         const filesUrls = stems.map(stem => {
+            const fileName = `${stem}_${songLabel}.${format}`;
+
             if (bucketName) {
-                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${stem}.${format}`;
+                return `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${fileName}`;
             } else {
-                return `/outputs/${randomId}/${stem}.${format}`;
+                return `/outputs/${randomId}/${fileName}`;
             }
         });
 
-        // El ZIP siempre es .zip, así que no cambia su extensión, pero sí su contenido
+        // 4. URL DEL ZIP (Nombre: metallica_one_Mix.zip)
+        const zipName = `${songLabel}_Mix.zip`;
         let zipUrl = "";
         if (bucketName) {
-            zipUrl = `https://storage.googleapis.com/${bucketName}/stems/${randomId}/full_mix.zip`;
+            zipUrl = `https://storage.googleapis.com/${bucketName}/stems/${randomId}/${zipName}`;
         } else {
-            zipUrl = `/outputs/${randomId}/full_mix.zip`;
+            zipUrl = `/outputs/${randomId}/${zipName}`;
         }
 
         fs.unlink(inputPath, (err) => { if (err) console.error(err); });
@@ -42,7 +56,7 @@ export const splitTrack = async (req, res) => {
         res.json({
             message: 'Separación completada',
             processId: randomId,
-            originalName: req.file.originalname,
+            originalName: originalName,
             files: filesUrls,
             zip: zipUrl
         });

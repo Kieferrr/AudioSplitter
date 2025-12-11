@@ -136,23 +136,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // ESTILO DEL BOTÓN ZIP (Posición Absoluta Corregida)
         const zipButtonHTML = zipUrl ? `
             <a href="${zipUrl}" download target="_blank" 
-               style="
-                  display: flex;
-                  align-items: center;
-                  gap: 6px;
-                  text-decoration: none;
-                  color: rgba(255, 255, 255, 0.7);
-                  border: 1px solid rgba(255, 255, 255, 0.2);
-                  background: rgba(255, 255, 255, 0.05);
-                  padding: 4px 12px;
-                  border-radius: 20px;
-                  font-size: 0.85rem;
-                  transition: all 0.2s ease;
-                  z-index: 30;
-               "
-               onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
-               onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
-               title="Descargar todo en ZIP">
+                style="
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    text-decoration: none;
+                    color: rgba(255, 255, 255, 0.7);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    background: rgba(255, 255, 255, 0.05);
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    transition: all 0.2s ease;
+                    z-index: 30;
+                "
+                onmouseover="this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'"
+                onmouseout="this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.7)'; this.style.background='rgba(255,255,255,0.05)'"
+                title="Descargar todo en ZIP">
                 <span class="material-icons" style="font-size: 16px;">folder_zip</span>
                 <span>ZIP</span>
             </a>
@@ -222,9 +222,28 @@ document.addEventListener('DOMContentLoaded', () => {
         tracks = [];
 
         filesUrls.forEach((url) => {
-            const name = url.split('/').pop().split('.')[0].toLowerCase();
-            const config = stemConfig[name] || { color: '#00d2ff' };
-            const track = new TrackComponent(tracksWrapper, name, url, config.color);
+            // 1. Obtener el nombre del archivo completo (ej: vocals_metallica.wav)
+            const filename = url.split('/').pop().toLowerCase();
+
+            // 2. DETECTAR EL STEM (Limpieza visual)
+            // Verificamos con qué palabra EMPIEZA el archivo para asignar el rol correcto
+            let stemName = 'unknown';
+
+            if (filename.startsWith('vocals')) stemName = 'vocals';
+            else if (filename.startsWith('drums')) stemName = 'drums';
+            else if (filename.startsWith('bass')) stemName = 'bass';
+            else if (filename.startsWith('other')) stemName = 'other';
+
+            // Si no es ninguno (caso raro), usamos el nombre completo
+            if (stemName === 'unknown') stemName = filename.split('.')[0];
+
+            // 3. Buscar color basado en el nombre limpio ('vocals', no 'vocals_metallica')
+            const config = stemConfig[stemName] || { color: '#00d2ff' };
+
+            // 4. Crear el track. 
+            // Nota: Pasamos 'stemName' para que en la pantalla salga "VOCALS" 
+            // pero pasamos 'url' para que el audio cargue el archivo correcto renombrado.
+            const track = new TrackComponent(tracksWrapper, stemName, url, config.color);
             tracks.push(track);
         });
 
