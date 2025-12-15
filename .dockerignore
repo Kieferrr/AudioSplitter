@@ -1,0 +1,40 @@
+# --- GIT Y CONTROL DE VERSIONES ---
+.git
+.gitignore
+.dockerignore
+
+# --- DEPENDENCIAS (¡CRUCIAL!) ---
+# Ignoramos esto para que Docker instale sus propias versiones limpias
+node_modules
+venv
+.venv
+
+# --- PYTHON CACHÉ (BASURA) ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# --- ARCHIVOS GENERADOS (AUDIOS VIEJOS) ---
+# No queremos que la imagen pese 10GB por audios viejos de prueba
+public/outputs/*
+downloads/*
+tmp_audio_*
+*.mp3
+*.wav
+*.zip
+
+# --- LOGS Y ERRORES ---
+npm-debug.log
+error.log
+
+# --- CONFIGURACIÓN LOCAL Y SECRETOS ---
+.env
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile
+README.md
+
+# --- EXCEPCIONES (Opcional) ---
+# Si tienes un archivo 'keep' para mantener carpetas vacías
+!public/outputs/.gitkeep
