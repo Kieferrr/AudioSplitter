@@ -44,8 +44,8 @@ app.use(express.static(publicDir));
 app.get('/ping', (req, res) => res.send('pong 🏓'));
 app.use('/api', apiRoutes);
 
-// 5. Iniciar Servidor
-app.listen(PORT, () => {
+// 5. Iniciar Servidor (CON TIMEOUT EXTENDIDO)
+const server = app.listen(PORT, () => {
   console.log(`
   ==========================================
   🚀 AUDIO SPLITTER V2 - SERVIDOR ACTIVO
@@ -53,6 +53,11 @@ app.listen(PORT, () => {
   📡 URL:  http://localhost:${PORT}
   📦 Modo: ${bucketName ? '☁️ NUBE (GCP)' : '💻 LOCAL (Disco Duro)'}
   📂 Outputs: ${bucketName ? 'Google Storage' : '/public/outputs'}
+  ⏳ Timeout: 20 minutos (Anti-corte Docker)
   ==========================================
   `);
 });
+
+// Aumentamos el timeout a 20 minutos (1.200.000 ms)
+// Esto evita que Node cierre la conexión si el proceso Python tarda mucho en CPU
+server.setTimeout(1200000);

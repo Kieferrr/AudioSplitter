@@ -5,6 +5,7 @@ import subprocess
 import json
 import numpy as np
 import warnings # Para silenciar el aviso amarillo
+import torch    # <--- NUEVO: Necesario para detectar GPU/CPU
 
 # Esto hace que la consola ignore la advertencia de versión futura
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -16,6 +17,25 @@ except ImportError:
     librosa = None
 
 from google.cloud import storage
+
+# --- 1. NUEVO: FUNCIÓN DE DETECCIÓN INTELIGENTE DE HARDWARE ---
+def get_optimal_device():
+    # Caso 1: Nvidia (Docker en Windows o Linux nativo)
+    if torch.cuda.is_available():
+        print("🚀 [Sistema] GPU Nvidia detectada (Modo Turbo)")
+        return "cuda"
+    # Caso 2: Mac Nativo (Fuera de Docker) - Por si acaso lo usas sin Docker
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        print("🍎 [Sistema] Apple Silicon detectado (Modo MPS)")
+        return "mps"
+    # Caso 3: Fallback CPU (Docker en Mac o PC sin GPU)
+    else:
+        print("🐢 [Sistema] No se detectó aceleración. Usando CPU (Modo Compatibilidad)")
+        return "cpu"
+
+# Guardamos el dispositivo seleccionado en una variable global
+DEVICE_SELECCIONADO = get_optimal_device()
+# ---------------------------------------------------------------
 
 def upload_to_gcp(local_file_path, bucket_name, destination_blob_name):
     try:
@@ -107,7 +127,9 @@ def main():
     print(f"[DATA_JSON] {json.dumps(analysis_data)}")
 
     # --- 2. DEMUCS ---
-    cmd = ["demucs", "-n", "htdemucs", "-o", output_base]
+    # AQUÍ ESTÁ EL CAMBIO CLAVE: Agregamos "-d" y la variable DEVICE_SELECCIONADO
+    cmd = ["demucs", "-n", "htdemucs", "-d", DEVICE_SELECCIONADO, "-o", output_base]
+    
     if audio_format == "mp3":
         cmd.extend(["--mp3", "--mp3-bitrate", "192"])
     

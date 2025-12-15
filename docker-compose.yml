@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  audiosplitter:
+    build: .
+    container_name: audiosplitter_app
+    ports:
+      - "8080:8080"
+    volumes:
+      # Esto permite que si editas código en tu PC, se actualice en Docker sin reiniciar
+      - .:/app
+      - /app/node_modules
+    environment:
+      - PORT=8080
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    
+    # --- SECCIÓN GPU (Windows + Nvidia) ---
+    # Si tienes Windows y drivers Nvidia, DESCOMENTA las líneas de abajo:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    
+    command: npm start
