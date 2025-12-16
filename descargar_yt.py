@@ -3,7 +3,6 @@ import os
 import yt_dlp
 import json
 
-# Forzar codificación UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
 def download_audio(youtube_url, random_id):
@@ -11,27 +10,17 @@ def download_audio(youtube_url, random_id):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # --- LÓGICA DE COOKIES ---
+    # --- Lógica de Cookies ---
     secret_cookie_path = '/secrets/cookies.txt'
     local_cookie_path = 'cookies.txt'
-    
-    cookie_file = None
-    if os.path.exists(secret_cookie_path):
-        cookie_file = secret_cookie_path
-    elif os.path.exists(local_cookie_path):
-        cookie_file = local_cookie_path
-        
+    cookie_file = secret_cookie_path if os.path.exists(secret_cookie_path) else (local_cookie_path if os.path.exists(local_cookie_path) else None)
     use_cookies = cookie_file is not None
 
-    # Configuración de yt-dlp (HÍBRIDO: ANDROID + FORMATO LIBRE)
     ydl_opts = {
-        # 1. PEDIMOS "BEST" (Cualquier cosa de buena calidad)
-        # Esto soluciona el error "Requested format is not available"
-        'format': 'best', 
-        
+        'format': 'best',             # Calidad máxima disponible
+        'force_ipv4': True,           # VITAL: Evita bloqueos de rango IPv6 de Google
         'outtmpl': f'{output_dir}/{random_id}.%(ext)s',
         
-        # 2. NOS ASEGURAMOS QUE SALGA COMO MP3
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -43,33 +32,31 @@ def download_audio(youtube_url, random_id):
         'noprogress': True,
         'cookiefile': cookie_file,
         
-        # 3. USAMOS EL DISFRAZ DE ANDROID (El único que no te dio error 403)
+        # Volvemos a iOS porque es el más compatible cuando las cookies (VPN) son correctas
         'extractor_args': {
             'youtube': {
-                'player_client': ['android'], 
+                'player_client': ['ios'],
             }
         },
-        # User Agent de Android para completar el engaño
-        'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
+        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # 1. Obtener Info
-            info = ydl.extract_info(youtube_url, download=False)
-            video_title = info.get('title', 'YouTube Audio')
-            
+            # Info
             if use_cookies:
-                print(f"[INFO] 🍪 Usando cookies desde: {cookie_file}")
+                print(f"[INFO] 🍪 Cookies cargadas.")
             else:
                 print(f"[INFO] ⚠️ Sin cookies.")
-                
+            
+            info = ydl.extract_info(youtube_url, download=False)
+            video_title = info.get('title', 'YouTube Audio')
             print(f"[INFO] Descargando: {video_title}...")
             
-            # 2. Descargar
+            # Descarga
             ydl.download([youtube_url])
             
-            # 3. Respuesta JSON
+            # Resultado
             result = {
                 "success": True,
                 "filename": f"{random_id}.mp3",
@@ -88,7 +75,4 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(json.dumps({"success": False, "error": "Faltan argumentos"}))
         sys.exit(1)
-        
-    url = sys.argv[1]
-    rid = sys.argv[2]
-    download_audio(url, rid)
+    download_audio(sys.argv[1], sys.argv[2])
