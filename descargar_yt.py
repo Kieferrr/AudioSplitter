@@ -10,15 +10,20 @@ def download_audio(youtube_url, random_id):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # --- Lógica de Cookies ---
+    # --- Cookies ---
     secret_cookie_path = '/secrets/cookies.txt'
     local_cookie_path = 'cookies.txt'
     cookie_file = secret_cookie_path if os.path.exists(secret_cookie_path) else (local_cookie_path if os.path.exists(local_cookie_path) else None)
     use_cookies = cookie_file is not None
 
     ydl_opts = {
-        'format': 'best',             # Calidad máxima disponible
-        'force_ipv4': True,           # VITAL: Evita bloqueos de rango IPv6 de Google
+        # 1. VOLVEMOS AL FORMATO ESTÁNDAR
+        # Buscamos el mejor audio. Si no hay, el mejor video y extraemos audio.
+        'format': 'bestaudio/best', 
+        
+        # 2. MANTENEMOS IPV4 (Vital para Google Cloud)
+        'force_ipv4': True,
+        
         'outtmpl': f'{output_dir}/{random_id}.%(ext)s',
         
         'postprocessors': [{
@@ -32,13 +37,9 @@ def download_audio(youtube_url, random_id):
         'noprogress': True,
         'cookiefile': cookie_file,
         
-        # Volvemos a iOS porque es el más compatible cuando las cookies (VPN) son correctas
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['ios'],
-            }
-        },
-        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+        # 3. ELIMINAMOS EL DISFRAZ (extractor_args y user_agent)
+        # Como ya tenemos cookies de EEUU, entramos como "PC Normal"
+        # Esto soluciona el error "Format not available"
     }
 
     try:
