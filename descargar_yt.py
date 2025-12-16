@@ -28,7 +28,7 @@ def download_audio(youtube_url, random_id):
     use_cookies = cookie_file is not None
     # -------------------------------------
 
-    # Configuración de yt-dlp
+    # Configuración de yt-dlp (MODIFICADA PARA EVITAR BLOQUEOS)
     ydl_opts = {
         'format': 'bestaudio/best',
         # Nombre de salida: uploads/ID.mp3
@@ -42,7 +42,15 @@ def download_audio(youtube_url, random_id):
         'no_warnings': True,
         'noprogress': True,
         # Inyectamos la ruta de las cookies (si existen)
-        'cookiefile': cookie_file
+        'cookiefile': cookie_file,
+        
+        # --- EL DISFRAZ ANTI-BLOQUEO (MODO ANDROID) ---
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android'], # Engaña a YT diciendo que somos una App de Android
+            }
+        },
+        'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
     }
 
     try:
