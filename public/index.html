@@ -32,64 +32,69 @@
 
     <main class="main-wrapper">
 
-        <div class="glass-card">
+        <div id="auth-container"></div>
 
-            <header class="app-header">
-                <h1>AudioSplitter <span class="accent">AI</span></h1>
-                <p class="subtitle">Separa voces e instrumentos con Inteligencia Artificial</p>
-            </header>
+        <div id="app-container" class="hidden">
 
-            <div class="format-selector-container"
-                style="margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
-                <label for="formatSelect" style="color: #aaa; font-size: 0.9rem; font-weight: 600;">Formato:</label>
-                <select id="formatSelect" style="
-                    background: rgba(255, 255, 255, 0.05);
-                    color: white;
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    padding: 6px 12px;
-                    border-radius: 8px;
-                    outline: none;
-                    cursor: pointer;
-                    font-family: inherit;
-                    transition: all 0.3s;
-                " onmouseover="this.style.borderColor='var(--accent-color)'"
-                    onmouseout="this.style.borderColor='rgba(255, 255, 255, 0.2)'">
-                    <option value="mp3" style="background: #222;">MP3 (Rápido)</option>
-                    <option value="wav" style="background: #222;">WAV (Alta Calidad)</option>
-                </select>
-            </div>
+            <div class="glass-card">
 
-            <div id="drop-zone" class="drop-zone">
-                <span class="material-icons upload-icon">cloud_upload</span>
-                <p>Arrastra tu archivo aquí o haz clic para buscar</p>
-                <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
-            </div>
+                <header class="app-header">
+                    <h1>AudioSplitter <span class="accent">AI</span></h1>
+                    <p class="subtitle">Separa voces e instrumentos con Inteligencia Artificial</p>
+                </header>
 
-            <div class="divider">
-                <span>O USA YOUTUBE</span>
-            </div>
-
-            <div class="youtube-box">
-                <div class="input-group">
-                    <span class="material-icons" style="color: #aaa;">link</span>
-                    <input type="text" id="youtubeInput" placeholder="Pega el link aquí (Ej: https://youtu.be/...)">
+                <div class="format-selector-container"
+                    style="margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                    <label for="formatSelect" style="color: #aaa; font-size: 0.9rem; font-weight: 600;">Formato:</label>
+                    <select id="formatSelect" style="
+                        background: rgba(255, 255, 255, 0.05);
+                        color: white;
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                        padding: 6px 12px;
+                        border-radius: 8px;
+                        outline: none;
+                        cursor: pointer;
+                        font-family: inherit;
+                        transition: all 0.3s;
+                    " onmouseover="this.style.borderColor='var(--accent-color)'"
+                        onmouseout="this.style.borderColor='rgba(255, 255, 255, 0.2)'">
+                        <option value="mp3" style="background: #222;">MP3 (Rápido)</option>
+                        <option value="wav" style="background: #222;">WAV (Alta Calidad)</option>
+                    </select>
                 </div>
-                <button id="youtubeBtn" class="btn-primary">
-                    Procesar
-                </button>
-            </div>
 
-            <div id="loader" class="loader-container hidden">
-                <div class="spinner"></div>
-                <p id="loader-text">Calentando motores de IA...</p>
-                <div class="progress-bar-container" style="display:none;">
-                    <div id="progress-bar" class="progress-bar"></div>
+                <div id="drop-zone" class="drop-zone">
+                    <span class="material-icons upload-icon">cloud_upload</span>
+                    <p>Arrastra tu archivo aquí o haz clic para buscar</p>
+                    <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
                 </div>
-            </div>
 
-            <div id="results-area" class="results-container hidden">
-            </div>
+                <div class="divider">
+                    <span>O USA YOUTUBE</span>
+                </div>
 
+                <div class="youtube-box">
+                    <div class="input-group">
+                        <span class="material-icons" style="color: #aaa;">link</span>
+                        <input type="text" id="youtubeInput" placeholder="Pega el link aquí (Ej: https://youtu.be/...)">
+                    </div>
+                    <button id="youtubeBtn" class="btn-primary">
+                        Procesar
+                    </button>
+                </div>
+
+                <div id="loader" class="loader-container hidden">
+                    <div class="spinner"></div>
+                    <p id="loader-text">Calentando motores de IA...</p>
+                    <div class="progress-bar-container" style="display:none;">
+                        <div id="progress-bar" class="progress-bar"></div>
+                    </div>
+                </div>
+
+                <div id="results-area" class="results-container hidden">
+                </div>
+
+            </div>
         </div>
     </main>
 

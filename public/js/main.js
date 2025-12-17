@@ -1,6 +1,45 @@
 import { TrackComponent } from './components/TrackComponent.js';
+import { authService } from './services/authService.js';
+import { AuthComponent } from './components/AuthComponent.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+
+    // --- LÓGICA DE AUTENTICACIÓN (LOGIN VS APP) ---
+    const authContainer = document.getElementById('auth-container');
+    const appContainer = document.getElementById('app-container');
+
+    // Función para mostrar la App Principal
+    const showApp = (user) => {
+        authContainer.classList.add('hidden');
+        authContainer.innerHTML = ''; // Limpiar login para ahorrar memoria
+        appContainer.classList.remove('hidden');
+        console.log("Acceso concedido a:", user ? user.email : "Invitado");
+    };
+
+    // Función para mostrar el Login
+    const showLogin = () => {
+        appContainer.classList.add('hidden');
+        authContainer.classList.remove('hidden');
+
+        new AuthComponent(
+            authContainer,
+            (user) => showApp(user), // Callback Login Exitoso
+            () => showApp(null)      // Callback Invitado
+        );
+    };
+
+    // Observador: Revisa si ya existe sesión activa
+    authService.observeAuthState((user) => {
+        if (user) {
+            showApp(user);
+        } else {
+            showLogin();
+        }
+    });
+
+    // ----------------------------------------------------
+    // --- LÓGICA DE LA APLICACIÓN (TU CÓDIGO ORIGINAL) ---
+    // ----------------------------------------------------
 
     // 1. DOM ELEMENTS
     const dropZone = document.getElementById('drop-zone');
