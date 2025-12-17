@@ -13,6 +13,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
+
+    // Elementos nuevos para el Timer
+    const progressBarContainer = document.querySelector('.progress-bar-container');
+    const progressBar = document.getElementById('progress-bar');
+
+    // Creamos dinámicamente el texto del timer si no existe en HTML
+    let timerText = document.getElementById('timer-text');
+    if (!timerText) {
+        timerText = document.createElement('p');
+        timerText.id = 'timer-text';
+        timerText.className = 'timer-text';
+        progressBarContainer.after(timerText);
+    }
+
     const resultsArea = document.getElementById('results-area');
     const youtubeBox = document.querySelector('.youtube-box');
     const divider = document.querySelector('.divider');
@@ -26,6 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
     let sortableInstance = null;
     let globalMasterVolume = 1.0;
+
+    // Estado Timer Visual
+    let visualTimerInterval = null;
 
     // 2. LISTENERS
     dropZone.addEventListener('click', () => fileInput.click());
@@ -46,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.addEventListener(eventName, (e) => {
             e.preventDefault(); e.stopPropagation();
             dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-            dropZone.style.backgroundColor = 'rgba(0,0,0,0.3)';
+            dropZone.style.backgroundColor = 'rgba(0,0,0,0.02)';
         }, false);
     });
 
@@ -63,36 +80,173 @@ document.addEventListener('DOMContentLoaded', () => {
     youtubeInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') youtubeBtn.click(); });
 
 
+    // --- LÓGICA DE TIEMPO ESTIMADO (REGRESIÓN LINEAL) ---
+    function estimateProcessingTime(durationSeconds, format) {
+        // Factor de velocidad IA (0.9x tiempo real)
+        const PROCESSING_SPEED = 0.9;
+
+        // Overhead (Descarga + Subida + Cold Start)
+        // WAV tarda más por la subida de archivos grandes (aprox 30s más que MP3)
+        const overhead = (format === 'wav') ? 60 : 30;
+
+        return (durationSeconds * PROCESSING_SPEED) + overhead;
+    }
+
+    function startProgressTimer(estimatedSeconds) {
+        progressBarContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.classList.remove('indeterminate');
+
+        // CORRECCIÓN: Usamos la hora del sistema (Timestamp)
+        const startTime = Date.now();
+
+        const updateInterval = 100; // Actualizar visualmente cada 100ms
+
+        // Texto inicial
+        updateTimerText(estimatedSeconds);
+
+        if (visualTimerInterval) clearInterval(visualTimerInterval);
+
+        visualTimerInterval = setInterval(() => {
+            // CORRECCIÓN: Calculamos la diferencia real de tiempo
+            const now = Date.now();
+            const elapsed = (now - startTime) / 1000; // Convertimos ms a segundos
+
+            // Calculamos porcentaje (Topamos en 95% para no mentir si se demora más)
+            let percentage = (elapsed / estimatedSeconds) * 100;
+            if (percentage > 95) percentage = 95;
+
+            progressBar.style.width = `${percentage}%`;
+
+            // Cuenta regresiva visual
+            const remaining = Math.max(0, estimatedSeconds - elapsed);
+
+            if (remaining > 0) {
+                updateTimerText(remaining);
+            } else {
+                timerText.textContent = "Finalizando últimos detalles...";
+                // Si nos pasamos del tiempo, ponemos modo "indeterminado"
+                if (percentage >= 95) {
+                    progressBar.classList.add('indeterminate');
+                }
+            }
+
+        }, updateInterval);
+    }
+
+    function updateTimerText(secondsLeft) {
+        const minutes = Math.floor(secondsLeft / 60);
+        const seconds = Math.floor(secondsLeft % 60);
+        timerText.textContent = `Tiempo estimado: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function stopProgressTimer() {
+        if (visualTimerInterval) clearInterval(visualTimerInterval);
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.width = '100%';
+        timerText.textContent = "¡Listo!";
+
+        // Pequeño delay para que el usuario vea el 100% antes de desaparecer
+        setTimeout(() => {
+            progressBarContainer.style.display = 'none';
+        }, 500);
+    }
+
+    // Función auxiliar para obtener duración de archivo local
+    function getAudioDuration(file) {
+        return new Promise((resolve) => {
+            const objectUrl = URL.createObjectURL(file);
+            const audio = new Audio(objectUrl);
+            audio.onloadedmetadata = () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve(audio.duration);
+            };
+            audio.onerror = () => resolve(180); // 3 min default si falla
+        });
+    }
+
     // 3. API CALLS
+
+    // A) MANEJO DE ARCHIVOS LOCALES
     async function handleUpload(file) {
-        showLoader("Subiendo y analizando audio...");
+        // 1. Obtenemos la duración EXACTA leyendo el archivo en el navegador
+        showLoader("Analizando archivo...");
+        const duration = await getAudioDuration(file);
+
+        // 2. Calculamos el tiempo basado en esa duración
+        const format = formatSelect.value;
+        const estimatedTime = estimateProcessingTime(duration, format);
+
+        // 3. Iniciamos el timer con precisión
+        loaderText.textContent = `Subiendo y procesando: ${file.name}`;
+        startProgressTimer(estimatedTime);
+
         const formData = new FormData();
         formData.append('audioFile', file);
-        formData.append('format', formatSelect.value);
+        formData.append('format', format);
 
         try {
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
             if (!response.ok) throw new Error('Error Servidor');
             const data = await response.json();
+
+            stopProgressTimer(); // Detener timer
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
-        } catch (error) { console.error(error); alert(error.message); resetUI(); }
+        } catch (error) {
+            console.error(error);
+            stopProgressTimer();
+            alert(error.message);
+            resetUI();
+        }
     }
 
+    // B) MANEJO DE YOUTUBE (ESTRATEGIA 2 PASOS)
     async function handleYoutube(url) {
-        showLoader("Descargando y procesando YouTube...");
+        showLoader("Analizando video...");
+        // Ocultamos la barra temporalmente porque aun no sabemos el tiempo
+        progressBarContainer.style.display = 'none';
+
         try {
-            const response = await fetch('/api/youtube', {
+            // PASO 1: Obtener Metadata (Título y Duración) - RÁPIDO
+            const infoResponse = await fetch('/api/youtube-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ youtubeUrl: url })
+            });
+
+            if (!infoResponse.ok) throw new Error('No se pudo obtener información del video. Revisa el link.');
+            const metaData = await infoResponse.json();
+
+            // PASO 2: Calcular Tiempo Exacto
+            const realDuration = metaData.duration;
+            const format = formatSelect.value;
+            const estimatedTime = estimateProcessingTime(realDuration, format);
+
+            // PASO 3: Iniciar Proceso Pesado con Timer Preciso
+            loaderText.textContent = `Procesando: ${metaData.title}`;
+            startProgressTimer(estimatedTime);
+
+            const processResponse = await fetch('/api/youtube', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     youtubeUrl: url,
-                    format: formatSelect.value
+                    format: format
                 })
             });
-            if (!response.ok) throw new Error('Error Conexión');
-            const data = await response.json();
+
+            if (!processResponse.ok) throw new Error('Error en el procesamiento');
+            const data = await processResponse.json();
+
+            stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
-        } catch (error) { console.error(error); alert(error.message); resetUI(); }
+
+        } catch (error) {
+            console.error(error);
+            stopProgressTimer();
+            alert(error.message);
+            resetUI();
+        }
     }
 
     // 4. UI HELPERS
@@ -108,6 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetUI() {
         loader.classList.add('hidden');
+        progressBarContainer.style.display = 'none';
+
         dropZone.classList.remove('hidden');
         youtubeBox.classList.remove('hidden');
         divider.classList.remove('hidden');
@@ -129,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // --- A. BADGES DE BPM & KEY (ESTILO SUTIL/GHOST) ---
+        // --- A. BADGES DE BPM & KEY ---
         const badgeStyle = `
             background: rgba(255, 255, 255, 0.05); 
             border: 1px solid rgba(255, 255, 255, 0.15); 
@@ -148,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         ` : '';
 
-        // --- B. BOTONES DESCARGA (ESTILO GHOST) ---
+        // --- B. BOTONES DESCARGA ---
         const btnStyle = `
             display: flex; align-items: center; gap: 6px; text-decoration: none;
             color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.2);
@@ -230,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tracksWrapper = document.getElementById('tracks-wrapper');
 
-        // --- D. COLORES DE STEMS (SIN KARAOKE) ---
+        // --- D. COLORES DE STEMS ---
         const stemConfig = {
             'vocals': { color: '#FF4081' },
             'drums': { color: '#00E676' },
@@ -244,7 +400,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const filename = url.split('/').pop().toLowerCase();
             let stemName = 'unknown';
 
-            // Lógica de detección limpia (solo los 4 instrumentos)
             if (filename.startsWith('vocals')) stemName = 'vocals';
             else if (filename.startsWith('drums')) stemName = 'drums';
             else if (filename.startsWith('bass')) stemName = 'bass';
@@ -287,19 +442,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 tracks.forEach(t => t.pause());
                 isPlaying = false;
                 btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">play_arrow</span>';
-                stopTimer();
+                stopTimer(); // Detener timer de reproducción
             } else {
                 tracks.forEach(t => t.play());
                 isPlaying = true;
                 btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">pause</span>';
-                startTimer();
+                startTimer(); // Iniciar timer de reproducción
             }
         });
         btnStop.addEventListener('click', () => {
             tracks.forEach(t => t.stop());
             isPlaying = false;
             btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">play_arrow</span>';
-            stopTimer();
+            stopTimer(); // Detener timer de reproducción
             currentTimeSpan.textContent = "00:00";
         });
 

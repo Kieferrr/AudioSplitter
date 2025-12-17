@@ -7,6 +7,7 @@ import numpy as np
 import warnings # Para silenciar el aviso amarillo
 import torch    # <--- NUEVO: Necesario para detectar GPU/CPU
 
+sys.stdout.reconfigure(encoding='utf-8')
 # Esto hace que la consola ignore la advertencia de versión futura
 warnings.filterwarnings("ignore", category=FutureWarning)
 

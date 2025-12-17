@@ -567,3 +567,60 @@ input[type=range]::-moz-range-thumb {
         opacity: 0.2;
     }
 }
+
+/* --- BARRA DE PROGRESO (CORREGIDO) --- */
+
+/* El contenedor gris de fondo */
+.progress-bar-container {
+    width: 100%;
+    max-width: 300px;
+    /* Limitamos el ancho para que se vea elegante */
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    margin: 15px auto;
+    /* Centrado */
+    height: 8px;
+    position: relative;
+    overflow: hidden;
+    /* display: none; <- Esto lo maneja el JS con style.display */
+}
+
+/* La barra de color que se llena */
+.progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-color), #7c4dff);
+    border-radius: 10px;
+    transition: width 0.1s linear;
+    /* Movimiento fluido */
+    box-shadow: 0 0 10px rgba(187, 134, 252, 0.5);
+}
+
+/* Texto del temporizador */
+.timer-text {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 10px; /* Un poco de aire arriba */
+    font-family: monospace;
+    font-weight: 600;
+    text-align: center; /* Importante para que no salga a la izquierda */
+    display: block;
+}
+
+/* Animación cuando se pasa del tiempo (Modo Indeterminado) */
+.progress-bar.indeterminate {
+    width: 100% !important;
+    background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
