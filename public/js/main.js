@@ -2,6 +2,7 @@ import { TrackComponent } from './components/TrackComponent.js';
 import { authService } from './services/authService.js';
 import { AuthComponent } from './components/AuthComponent.js';
 import { dbService } from './services/dbService.js'; // --- NUEVO IMPORT ---
+import { LibraryModal } from './components/LibraryModal.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -16,18 +17,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Función para inyectar info del usuario en el header
     const updateHeaderWithUser = (user) => {
-        // Buscamos si ya existe el panel de usuario para no duplicarlo
         const existingPanel = document.getElementById('user-panel');
         if (existingPanel) existingPanel.remove();
 
         if (user) {
             const userPanel = document.createElement('div');
             userPanel.id = 'user-panel';
-            userPanel.style.cssText = "position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 10px; font-size: 0.8rem;";
+            userPanel.style.cssText = "position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 15px; font-size: 0.85rem;";
 
             userPanel.innerHTML = `
+                <button id="btnLibrary" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <span class="material-icons" style="font-size: 16px;">library_music</span> Mis Canciones
+                </button>
+
+                <div style="height: 20px; w-1px; border-left: 1px solid rgba(255,255,255,0.2);"></div>
+
                 <span style="opacity: 0.7;">${user.email}</span>
-                <button id="btnLogout" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer;">
+                <button id="btnLogout" style="background: transparent; border: none; color: #ff5252; font-weight: bold; cursor: pointer;">
                     Salir
                 </button>
             `;
@@ -36,7 +42,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // Listener del Logout
             document.getElementById('btnLogout').addEventListener('click', async () => {
                 await authService.logout();
-                window.location.reload(); // Recargamos para limpiar todo
+                window.location.reload();
+            });
+
+            // Listener de la Biblioteca
+            document.getElementById('btnLibrary').addEventListener('click', () => {
+                // Abrimos el Modal y le pasamos la función para cargar la canción
+                new LibraryModal(user.uid, (songData) => {
+                    // Esta función se ejecuta cuando el usuario da click en "Cargar" dentro del modal
+                    console.log("Cargando canción:", songData.title);
+
+                    // Reseteamos UI actual
+                    resetApplication();
+
+                    // Cargamos los datos guardados
+                    currentSongData = songData;
+
+                    // Iniciamos el DAW con los datos traídos de Firestore
+                    // Nota: songData.urls son los links de Firebase Storage
+                    initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key);
+                });
             });
         }
     };

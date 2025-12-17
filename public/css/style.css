@@ -600,10 +600,12 @@ input[type=range]::-moz-range-thumb {
 .timer-text {
     font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.7);
-    margin-top: 10px; /* Un poco de aire arriba */
+    margin-top: 10px;
+    /* Un poco de aire arriba */
     font-family: monospace;
     font-weight: 600;
-    text-align: center; /* Importante para que no salga a la izquierda */
+    text-align: center;
+    /* Importante para que no salga a la izquierda */
     display: block;
 }
 
@@ -629,7 +631,8 @@ input[type=range]::-moz-range-thumb {
 
 .auth-card {
     max-width: 400px;
-    margin: 80px auto; /* Centrado vertical y horizontal */
+    margin: 80px auto;
+    /* Centrado vertical y horizontal */
     padding: 40px;
     text-align: center;
     animation: fadeIn 0.5s ease-out;
@@ -667,7 +670,8 @@ input[type=range]::-moz-range-thumb {
 
 .input-group input {
     width: 100%;
-    padding: 12px 12px 12px 45px; /* Espacio para el icono */
+    padding: 12px 12px 12px 45px;
+    /* Espacio para el icono */
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
@@ -738,7 +742,8 @@ input[type=range]::-moz-range-thumb {
     font-size: 0.8rem;
 }
 
-.divider::before, .divider::after {
+.divider::before,
+.divider::after {
     content: "";
     flex: 1;
     height: 1px;
@@ -747,4 +752,113 @@ input[type=range]::-moz-range-thumb {
 
 .divider span {
     padding: 0 10px;
+}
+
+/* --- MODAL STYLES --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    /* Altura máxima */
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    /* Quitamos padding del contenedor para manejarlo dentro */
+    overflow: hidden;
+    /* Para el scroll */
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-weight: 600;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.btn-icon:hover {
+    opacity: 1;
+}
+
+.songs-list {
+    padding: 20px;
+    overflow-y: auto;
+    /* Scroll si hay muchas canciones */
+}
+
+/* Item de Canción */
+.song-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+}
+
+.song-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.song-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+
+.song-meta {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-load {
+    background: var(--accent-color);
+    border: none;
+    color: black;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85rem;
+}
+
+.btn-load:hover {
+    transform: scale(1.05);
 }
