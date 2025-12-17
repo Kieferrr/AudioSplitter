@@ -624,3 +624,127 @@ input[type=range]::-moz-range-thumb {
         background-position: -200% 0;
     }
 }
+
+/* --- LOGIN & AUTH STYLES --- */
+
+.auth-card {
+    max-width: 400px;
+    margin: 80px auto; /* Centrado vertical y horizontal */
+    padding: 40px;
+    text-align: center;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.auth-header h2 {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    background: linear-gradient(90deg, #fff, var(--accent-color));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.auth-subtitle {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+}
+
+/* Inputs con Iconos */
+.input-group {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.input-group .material-icons {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 20px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 12px 12px 12px 45px; /* Espacio para el icono */
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: white;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.input-group input:focus {
+    border-color: var(--accent-color);
+    outline: none;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* Botones */
+.full-width {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+}
+
+.btn-secondary {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    border-radius: 25px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    border-color: var(--accent-color);
+    color: white;
+}
+
+/* Link Toggle */
+.auth-toggle {
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+}
+
+.link-highlight {
+    color: var(--accent-color);
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+/* Mensaje de Error */
+.auth-error {
+    background: rgba(255, 82, 82, 0.2);
+    border: 1px solid #ff5252;
+    color: #ff867f;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-bottom: 15px;
+}
+
+/* Divisor O */
+.divider {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.8rem;
+}
+
+.divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.divider span {
+    padding: 0 10px;
+}
