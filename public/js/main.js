@@ -1,113 +1,103 @@
 import { TrackComponent } from './components/TrackComponent.js';
 import { authService } from './services/authService.js';
 import { AuthComponent } from './components/AuthComponent.js';
-import { dbService } from './services/dbService.js'; // --- NUEVO IMPORT ---
+import { dbService } from './services/dbService.js';
 import { LibraryModal } from './components/LibraryModal.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- VARIABLES DE AUTENTICACIÓN ---
     const authContainer = document.getElementById('auth-container');
     const appContainer = document.getElementById('app-container');
-    let currentUser = null; // --- NUEVO: Aquí guardaremos quién está conectado
+    const glassCard = document.querySelector('.glass-card');
+    let currentUser = null;
 
-    // --- UI HELPERS PARA AUTH ---
-    // Creamos el botón de logout dinámicamente en el header principal
-    const appHeader = document.querySelector('.app-header');
+    // Referencias
+    const appHeaderElement = document.querySelector('.app-header');
+    const uploadUi = document.getElementById('upload-ui');
+    const resultsArea = document.getElementById('results-area');
 
-    // Función para inyectar info del usuario en el header
+    // --- VARIABLES GLOBALES DEL REPRODUCTOR (Aquí para evitar scope issues) ---
+    let tracks = [];
+    let isPlaying = false;
+    let globalDuration = 0;
+    let progressInterval = null;
+    let visualTimerInterval = null;
+    let currentSongData = null;
+    let sortableInstance = null;
+    let globalMasterVolume = 1.0; // DEFINIDO AQUÍ PARA QUE FUNCIONE SIEMPRE
+    let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
+
+    // --- PANEL USUARIO ---
     const updateHeaderWithUser = (user) => {
         const existingPanel = document.getElementById('user-panel');
         if (existingPanel) existingPanel.remove();
 
+        const userPanel = document.createElement('div');
+        userPanel.id = 'user-panel';
+
         if (user) {
-            const userPanel = document.createElement('div');
-            userPanel.id = 'user-panel';
-            userPanel.style.cssText = "position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 15px; font-size: 0.85rem;";
-
             userPanel.innerHTML = `
-                <button id="btnLibrary" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    <span class="material-icons" style="font-size: 16px;">library_music</span> Mis Canciones
+                <button id="btnLibrary" class="header-btn">
+                    <span class="material-icons">library_music</span> Mis Canciones
                 </button>
-
-                <div style="height: 20px; w-1px; border-left: 1px solid rgba(255,255,255,0.2);"></div>
-
-                <span style="opacity: 0.7;">${user.email}</span>
-                <button id="btnLogout" style="background: transparent; border: none; color: #ff5252; font-weight: bold; cursor: pointer;">
-                    Salir
+                <div class="v-divider"></div>
+                <span class="user-email">${user.email.split('@')[0]}</span>
+                <button id="btnLogout" class="logout-btn" title="Salir">
+                    <span class="material-icons">logout</span>
                 </button>
             `;
-            appHeader.appendChild(userPanel);
+            glassCard.appendChild(userPanel);
 
-            // Listener del Logout
             document.getElementById('btnLogout').addEventListener('click', async () => {
-                await authService.logout();
-                window.location.reload();
+                await authService.logout(); window.location.reload();
             });
-
-            // Listener de la Biblioteca
             document.getElementById('btnLibrary').addEventListener('click', () => {
-                // Abrimos el Modal y le pasamos la función para cargar la canción
                 new LibraryModal(user.uid, (songData) => {
-                    // Esta función se ejecuta cuando el usuario da click en "Cargar" dentro del modal
-                    console.log("Cargando canción:", songData.title);
-
-                    // Reseteamos UI actual
                     resetApplication();
-
-                    // Cargamos los datos guardados
-                    currentSongData = songData;
-
-                    // Iniciamos el DAW con los datos traídos de Firestore
-                    // Nota: songData.urls son los links de Firebase Storage
-                    initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key);
+                    setTimeout(() => {
+                        currentSongData = songData;
+                        // AQUÍ ESTÁ LA CLAVE: true significa "Viene de guardado"
+                        initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
+                    }, 50);
                 });
             });
+        } else {
+            userPanel.innerHTML = `
+                <span style="opacity: 0.6; font-size: 0.8rem; margin-right: 8px;">Invitado</span>
+                <button id="btnLoginGuest" style="background:var(--accent-color); border:none; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:bold; color:black;">
+                    Iniciar Sesión
+                </button>
+            `;
+            glassCard.appendChild(userPanel);
+            document.getElementById('btnLoginGuest').addEventListener('click', () => window.location.reload());
         }
     };
 
-    // Función para mostrar la App Principal
     const showApp = (user) => {
-        currentUser = user; // Guardamos el usuario globalmente
+        currentUser = user;
         authContainer.classList.add('hidden');
         authContainer.innerHTML = '';
         appContainer.classList.remove('hidden');
-        updateHeaderWithUser(user); // Actualizamos el header
-        console.log("Acceso concedido a:", user ? user.email : "Invitado");
+        updateHeaderWithUser(user);
     };
 
-    // Función para mostrar el Login
     const showLogin = () => {
         currentUser = null;
         appContainer.classList.add('hidden');
         authContainer.classList.remove('hidden');
-
-        new AuthComponent(
-            authContainer,
-            (user) => showApp(user),
-            () => showApp(null)
-        );
+        new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
     };
 
     authService.observeAuthState((user) => {
-        if (user) {
-            showApp(user);
-        } else {
-            showLogin();
-        }
+        if (user) showApp(user); else showLogin();
     });
 
-    // ----------------------------------------------------
-    // --- LÓGICA DE LA APLICACIÓN ---
-    // ----------------------------------------------------
-
-    // 1. DOM ELEMENTS
+    // --- LOGICA UPLOAD ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('fileInput');
     const youtubeInput = document.getElementById('youtubeInput');
     const youtubeBtn = document.getElementById('youtubeBtn');
     const formatSelect = document.getElementById('formatSelect');
-    const formatContainer = document.querySelector('.format-selector-container');
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
     const progressBarContainer = document.querySelector('.progress-bar-container');
@@ -115,454 +105,278 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let timerText = document.getElementById('timer-text');
     if (!timerText) {
-        timerText = document.createElement('p');
-        timerText.id = 'timer-text';
-        timerText.className = 'timer-text';
+        timerText = document.createElement('p'); timerText.id = 'timer-text'; timerText.className = 'timer-text';
         progressBarContainer.after(timerText);
     }
 
-    const resultsArea = document.getElementById('results-area');
-    const youtubeBox = document.querySelector('.youtube-box');
-    const divider = document.querySelector('.divider');
-    // const appHeader ya está definido arriba
-
-    // Estado
-    let tracks = [];
-    let isPlaying = false;
-    let globalDuration = 0;
-    let progressInterval = null;
-    let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
-    let sortableInstance = null;
-    let globalMasterVolume = 1.0;
-    let visualTimerInterval = null;
-
-    // Variables para guardar los datos de la canción actual (para poder guardarla en DB)
-    let currentSongData = null;
-
-    // 2. LISTENERS
     dropZone.addEventListener('click', () => fileInput.click());
-
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length) handleUpload(e.target.files[0]);
-    });
-
+    fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleUpload(e.target.files[0]); });
     ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault(); e.stopPropagation();
-            dropZone.style.borderColor = 'var(--accent-color)';
-            dropZone.style.backgroundColor = 'rgba(187, 134, 252, 0.1)';
-        }, false);
+        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-active'); }, false);
     });
-
     ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault(); e.stopPropagation();
-            dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-            dropZone.style.backgroundColor = 'rgba(0,0,0,0.02)';
-        }, false);
+        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-active'); }, false);
     });
-
-    dropZone.addEventListener('drop', (e) => {
-        const dt = e.dataTransfer;
-        if (dt.files.length) handleUpload(dt.files[0]);
-    });
-
-    youtubeBtn.addEventListener('click', () => {
-        const url = youtubeInput.value.trim();
-        if (url) handleYoutube(url);
-    });
-
+    dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]); });
+    youtubeBtn.addEventListener('click', () => { if (youtubeInput.value.trim()) handleYoutube(youtubeInput.value.trim()); });
     youtubeInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') youtubeBtn.click(); });
 
-
-    // --- HELPERS TIEMPO ---
-    function estimateProcessingTime(durationSeconds, format) {
-        const PROCESSING_SPEED = 0.9;
-        const overhead = (format === 'wav') ? 60 : 30;
-        return (durationSeconds * PROCESSING_SPEED) + overhead;
-    }
-
-    function startProgressTimer(estimatedSeconds) {
-        progressBarContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.classList.remove('indeterminate');
-        const startTime = Date.now();
-        const updateInterval = 100;
-        updateTimerText(estimatedSeconds);
-
-        if (visualTimerInterval) clearInterval(visualTimerInterval);
-
-        visualTimerInterval = setInterval(() => {
-            const now = Date.now();
-            const elapsed = (now - startTime) / 1000;
-            let percentage = (elapsed / estimatedSeconds) * 100;
-            if (percentage > 95) percentage = 95;
-
-            progressBar.style.width = `${percentage}%`;
-            const remaining = Math.max(0, estimatedSeconds - elapsed);
-
-            if (remaining > 0) {
-                updateTimerText(remaining);
-            } else {
-                timerText.textContent = "Finalizando últimos detalles...";
-                if (percentage >= 95) progressBar.classList.add('indeterminate');
-            }
-        }, updateInterval);
-    }
-
-    function updateTimerText(secondsLeft) {
-        const minutes = Math.floor(secondsLeft / 60);
-        const seconds = Math.floor(secondsLeft % 60);
-        timerText.textContent = `Tiempo estimado: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-    }
-
-    function stopProgressTimer() {
-        if (visualTimerInterval) clearInterval(visualTimerInterval);
-        progressBar.classList.remove('indeterminate');
-        progressBar.style.width = '100%';
-        timerText.textContent = "¡Listo!";
-        setTimeout(() => { progressBarContainer.style.display = 'none'; }, 500);
-    }
-
+    function estimateProcessingTime(duration, format) { return (duration * 0.9) + (format === 'wav' ? 60 : 30); }
     function getAudioDuration(file) {
-        return new Promise((resolve) => {
-            const objectUrl = URL.createObjectURL(file);
-            const audio = new Audio(objectUrl);
-            audio.onloadedmetadata = () => {
-                URL.revokeObjectURL(objectUrl);
-                resolve(audio.duration);
-            };
-            audio.onerror = () => resolve(180);
+        return new Promise(resolve => {
+            const url = URL.createObjectURL(file);
+            const a = new Audio(url);
+            a.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(a.duration); };
+            a.onerror = () => resolve(180);
         });
     }
 
-    // 3. API CALLS
+    function startProgressTimer(seconds) {
+        progressBarContainer.style.display = 'block'; progressBar.style.width = '0%'; progressBar.classList.remove('indeterminate');
+        const start = Date.now();
+        if (visualTimerInterval) clearInterval(visualTimerInterval);
+        visualTimerInterval = setInterval(() => {
+            const elapsed = (Date.now() - start) / 1000;
+            let pct = (elapsed / seconds) * 100; if (pct > 95) pct = 95;
+            progressBar.style.width = `${pct}%`;
+            const left = Math.max(0, seconds - elapsed);
+            if (left > 0) {
+                const m = Math.floor(left / 60), s = Math.floor(left % 60);
+                timerText.textContent = `Tiempo estimado: ${m}:${s.toString().padStart(2, '0')}`;
+            } else {
+                timerText.textContent = "Finalizando...";
+                if (pct >= 95) progressBar.classList.add('indeterminate');
+            }
+        }, 100);
+    }
+    function stopProgressTimer() {
+        if (visualTimerInterval) clearInterval(visualTimerInterval);
+        progressBar.classList.remove('indeterminate'); progressBar.style.width = '100%'; timerText.textContent = "¡Listo!";
+        setTimeout(() => progressBarContainer.style.display = 'none', 500);
+    }
+
     async function handleUpload(file) {
         showLoader("Analizando archivo...");
-        const duration = await getAudioDuration(file);
-        const format = formatSelect.value;
-        const estimatedTime = estimateProcessingTime(duration, format);
+        const dur = await getAudioDuration(file);
+        const fmt = formatSelect.value;
+        loaderText.textContent = `Procesando: ${file.name}`;
+        startProgressTimer(estimateProcessingTime(dur, fmt));
 
-        loaderText.textContent = `Subiendo y procesando: ${file.name}`;
-        startProgressTimer(estimatedTime);
-
-        const formData = new FormData();
-        formData.append('audioFile', file);
-        formData.append('format', format);
-
+        const fd = new FormData(); fd.append('audioFile', file); fd.append('format', fmt);
         try {
-            const response = await fetch('/api/upload', { method: 'POST', body: formData });
-            if (!response.ok) throw new Error('Error Servidor');
-            const data = await response.json();
-
-            // Guardamos datos temporales por si quiere guardar en DB
-            currentSongData = { ...data, format };
-
+            const res = await fetch('/api/upload', { method: 'POST', body: fd });
+            if (!res.ok) throw new Error('Error Servidor');
+            const data = await res.json();
+            currentSongData = { ...data, format: fmt };
             stopProgressTimer();
-            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
-        } catch (error) {
-            console.error(error);
-            stopProgressTimer();
-            alert(error.message);
-            resetUI();
-        }
+            // isSaved = false (porque es nueva)
+            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
+        } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
     }
 
     async function handleYoutube(url) {
         showLoader("Analizando video...");
-        progressBarContainer.style.display = 'none';
-
         try {
-            const infoResponse = await fetch('/api/youtube-info', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ youtubeUrl: url })
-            });
+            const info = await fetch('/api/youtube-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youtubeUrl: url }) });
+            if (!info.ok) throw new Error('Error info');
+            const meta = await info.json();
+            loaderText.textContent = `Procesando: ${meta.title}`;
+            startProgressTimer(estimateProcessingTime(meta.duration, formatSelect.value));
 
-            if (!infoResponse.ok) throw new Error('No se pudo obtener información del video.');
-            const metaData = await infoResponse.json();
-
-            const realDuration = metaData.duration;
-            const format = formatSelect.value;
-            const estimatedTime = estimateProcessingTime(realDuration, format);
-
-            loaderText.textContent = `Procesando: ${metaData.title}`;
-            startProgressTimer(estimatedTime);
-
-            const processResponse = await fetch('/api/youtube', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ youtubeUrl: url, format: format })
-            });
-
-            if (!processResponse.ok) throw new Error('Error en el procesamiento');
-            const data = await processResponse.json();
-
-            // Guardamos datos temporales
-            currentSongData = { ...data, format };
-
+            const res = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youtubeUrl: url, format: formatSelect.value }) });
+            if (!res.ok) throw new Error('Error procesar');
+            const data = await res.json();
+            currentSongData = { ...data, format: formatSelect.value };
             stopProgressTimer();
-            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key);
-        } catch (error) {
-            console.error(error);
-            stopProgressTimer();
-            alert(error.message);
-            resetUI();
-        }
+            // isSaved = false (porque es nueva)
+            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
+        } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
     }
 
-    // 4. UI HELPERS
-    function showLoader(text) {
-        dropZone.classList.add('hidden');
-        youtubeBox.classList.add('hidden');
-        divider.classList.add('hidden');
-        if (formatContainer) formatContainer.style.display = 'none';
-        loaderText.textContent = text;
+    function showLoader(txt) {
+        uploadUi.classList.add('hidden');
+        loaderText.textContent = txt;
         loader.classList.remove('hidden');
     }
 
     function resetUI() {
         loader.classList.add('hidden');
         progressBarContainer.style.display = 'none';
-        dropZone.classList.remove('hidden');
-        youtubeBox.classList.remove('hidden');
-        divider.classList.remove('hidden');
-        if (formatContainer) formatContainer.style.display = 'flex';
+        uploadUi.classList.remove('hidden');
         fileInput.value = ''; youtubeInput.value = '';
-        dropZone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
     }
 
-    // 5. DAW INITIALIZATION
-    function initDAW(filesUrls, originalName, zipUrl = null, instrumentalUrl = null, bpm = 0, key = "Unknown") {
+    // --- REPRODUCTOR (DAW) ---
+    // Agregamos parámetro 'isSaved' para controlar el botón guardar
+    function initDAW(files, name, zip, inst, bpm, key, isSaved = false) {
         loader.classList.add('hidden');
-        appHeader.classList.add('hidden');
+        uploadUi.classList.add('hidden');
+        appHeaderElement.classList.add('hidden');
 
-        const glassCard = document.querySelector('.glass-card');
         glassCard.classList.add('expanded');
+        resultsArea.classList.remove('hidden');
 
-        setTimeout(() => { resultsArea.classList.remove('hidden'); }, 300);
+        const safeName = name ? name.replace(/\.[^/.]+$/, "") : "Mix";
 
-        const safeTitle = originalName ? originalName.replace(/\.[^/.]+$/, "") : "Mix";
+        // BOTÓN GUARDAR: Solo aparece si hay usuario Y NO está guardada (isSaved == false)
+        const saveBtnHTML = (currentUser && !isSaved) ? `
+            <button id="btnSaveToCloud" class="action-btn">
+                <span class="material-icons">cloud_upload</span> Guardar
+            </button>` : '';
 
-        // --- BOTÓN GUARDAR (SOLO SI ESTÁ LOGUEADO) ---
-        // Verificamos si hay usuario activo para mostrar el botón
-        const saveButtonHTML = currentUser ? `
-            <button id="btnSaveToCloud" style="
-                display: flex; align-items: center; gap: 6px; 
-                background: var(--accent-color); color: black; border: none;
-                padding: 5px 12px; border-radius: 20px; font-weight: bold;
-                font-size: 0.8rem; cursor: pointer; transition: transform 0.2s;
-            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                <span class="material-icons" style="font-size: 16px;">cloud_upload</span>
-                <span>Guardar</span>
-            </button>
-        ` : '';
-        // ----------------------------------------------
+        const bpmBadge = bpm > 0 ? `<div class="badges-container"><span class="badge-info">BPM ${bpm}</span><span class="badge-info">KEY ${key}</span></div>` : '';
 
-        const badgeStyle = `background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-family: monospace; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.5px;`;
-        const badgesHTML = (bpm > 0) ? `
-            <div style="display: flex; gap: 8px; margin-top: 6px; justify-content: center; opacity: 1;">
-                <span style="${badgeStyle}">BPM ${bpm}</span>
-                <span style="${badgeStyle}">KEY ${key}</span>
-            </div>` : '';
-
-        const btnStyle = `display: flex; align-items: center; gap: 6px; text-decoration: none; color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05); padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; transition: all 0.2s ease;`;
-        const btnHover = "this.style.borderColor='rgba(255,255,255,0.8)'; this.style.color='white'; this.style.background='rgba(255,255,255,0.1)'";
-        const btnOut = "this.style.borderColor='rgba(255,255,255,0.2)'; this.style.color='rgba(255,255,255,0.6)'; this.style.background='rgba(255,255,255,0.05)'";
-
-        const instrButtonHTML = instrumentalUrl ? `<a href="${instrumentalUrl}" download target="_blank" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}" title="Descargar Instrumental"><span class="material-icons" style="font-size: 16px;">download</span><span>Instrumental</span></a>` : '';
-        const zipButtonHTML = zipUrl ? `<a href="${zipUrl}" download target="_blank" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}" title="Descargar Todo (ZIP)"><span class="material-icons" style="font-size: 16px;">download</span><span>ZIP</span></a>` : '';
-
+        // RESTAURADO: Textos completos, iconos correctos, botón nuevo negro
         resultsArea.innerHTML = `
             <div class="player-header">
                 <div class="player-top-row">
-                    <div class="player-title-container" style="display: flex; flex-direction: column; justify-content: center; overflow: visible;">
-                         <div style="width: 100%; overflow: hidden; mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);">
-                             <span class="player-title-text" id="playerTitle">${safeTitle}</span>
+                    <div class="player-title-container">
+                         <div class="player-title-mask">
+                             <span class="player-title-text">${safeName}</span>
                          </div>
-                         ${badgesHTML}
+                         ${bpmBadge}
                     </div>
 
-                    <div style="position: absolute; right: 140px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px;">
-                        ${saveButtonHTML} ${instrButtonHTML}
-                        ${zipButtonHTML}
+                    <div class="actions-right">
+                        ${saveBtnHTML}
+                        ${inst ? `<a href="${inst}" download class="action-btn"><span class="material-icons">download</span> Instrumental</a>` : ''}
+                        ${zip ? `<a href="${zip}" download class="action-btn"><span class="material-icons">download</span> ZIP</a>` : ''}
+                        <button id="btnReset" class="action-btn black-btn"><span class="material-icons">add</span> Nuevo proyecto</button>
                     </div>
-                    
-                    <button id="btnReset" class="btn-new-project-absolute">
-                        <span class="material-icons" style="font-size: 16px;">add</span> Nuevo proyecto
-                    </button>
                 </div>
-
+                
                 <div class="controls-row">
-                    <div style="display: flex; gap: 15px;">
-                        <button id="btnPlayPause" class="btn-primary" style="border-radius: 50%; width: 50px; height: 50px; padding: 0; display: flex; align-items: center; justify-content: center;">
-                            <span class="material-icons" style="font-size: 28px;">play_arrow</span>
-                        </button>
-                        <button id="btnStop" class="btn-primary" style="border-radius: 50%; width: 50px; height: 50px; padding: 0; display: flex; align-items: center; justify-content: center; background: #333;">
-                            <span class="material-icons" style="font-size: 28px;">stop</span>
-                        </button>
+                    <div class="main-controls">
+                        <button id="btnPlayPause" class="ctrl-circle play"><span class="material-icons" style="font-size:30px;">play_arrow</span></button>
+                        <button id="btnStop" class="ctrl-circle stop"><span class="material-icons" style="font-size:30px;">stop</span></button>
                     </div>
-
                     <div class="master-vol-container">
-                        <span class="material-icons" style="font-size: 22px; color: var(--accent-color);">volume_up</span>
-                        <input type="range" id="masterVolume" class="master-slider" min="0" max="1" step="0.01" value="1">
+                        <span class="material-icons" style="color:var(--accent-color);">volume_up</span>
+                        <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="1">
                     </div>
                 </div>
-
-                <div class="time-display" style="font-family: monospace; font-size: 1.2rem; margin-bottom: 20px;">
-                    <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
-                </div>
+                
+                <div class="time-display"><span id="currentTime">00:00</span> / <span id="totalTime">00:00</span></div>
             </div>
+            
             <div id="tracks-wrapper"></div>
         `;
 
-        // --- LISTENERS DEL PLAYER ---
+        // Listeners
+        document.getElementById('btnReset').onclick = resetApplication;
+        if (document.getElementById('btnSaveToCloud')) {
+            document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
+                const b = e.currentTarget; b.disabled = true; b.innerHTML = '...';
+                try { await dbService.saveSong(currentUser.uid, currentSongData); alert("¡Guardada!"); b.remove(); /* Eliminamos el botón al guardar */ }
+                catch (e) { alert(e.message); b.disabled = false; b.innerHTML = 'Guardar'; }
+            });
+        }
+
         btnPlayPause = document.getElementById('btnPlayPause');
         btnStop = document.getElementById('btnStop');
         currentTimeSpan = document.getElementById('currentTime');
         totalTimeSpan = document.getElementById('totalTime');
-        document.getElementById('btnReset').onclick = resetApplication;
+        const mVol = document.getElementById('masterVolume');
 
-        // Listener para el Botón Guardar (si existe)
-        const btnSave = document.getElementById('btnSaveToCloud');
-        if (btnSave) {
-            btnSave.addEventListener('click', async () => {
-                btnSave.disabled = true;
-                btnSave.innerHTML = '<span class="material-icons spin">refresh</span> Guardando...';
-                try {
-                    await dbService.saveSong(currentUser.uid, currentSongData);
-                    alert("¡Canción guardada con éxito!");
-                    btnSave.innerHTML = '<span class="material-icons">check</span> Guardada';
-                } catch (error) {
-                    alert(error.message);
-                    btnSave.disabled = false;
-                    btnSave.innerHTML = '<span class="material-icons">cloud_upload</span> Guardar';
-                }
-            });
-        }
-
-        const masterSlider = document.getElementById('masterVolume');
-        masterSlider.oninput = (e) => {
+        // CORRECCIÓN VOLUMEN: Seteamos el valor inicial y el listener
+        mVol.value = globalMasterVolume;
+        mVol.oninput = (e) => {
             globalMasterVolume = parseFloat(e.target.value);
             tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
         };
 
-        const tracksWrapper = document.getElementById('tracks-wrapper');
-        const stemConfig = { 'vocals': { color: '#FF4081' }, 'drums': { color: '#00E676' }, 'bass': { color: '#FFD740' }, 'other': { color: '#7C4DFF' } };
-
+        const tWrapper = document.getElementById('tracks-wrapper');
+        const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
         tracks = [];
-        filesUrls.forEach((url) => {
-            const filename = url.split('/').pop().toLowerCase();
-            let stemName = 'unknown';
-            if (filename.startsWith('vocals')) stemName = 'vocals';
-            else if (filename.startsWith('drums')) stemName = 'drums';
-            else if (filename.startsWith('bass')) stemName = 'bass';
-            else if (filename.startsWith('other')) stemName = 'other';
-            if (stemName === 'unknown') stemName = filename.split('.')[0];
-            const config = stemConfig[stemName] || { color: '#00d2ff' };
-            const track = new TrackComponent(tracksWrapper, stemName, url, config.color);
-            tracks.push(track);
+
+        files.forEach(url => {
+            // MEJORA: Detección de nombre más robusta
+            // Buscamos palabras clave en cualquier parte de la URL, no solo al inicio
+            const lowerUrl = url.toLowerCase();
+            let stem = 'other'; // Default
+
+            if (lowerUrl.includes('vocals')) stem = 'vocals';
+            else if (lowerUrl.includes('drums')) stem = 'drums';
+            else if (lowerUrl.includes('bass')) stem = 'bass';
+            else if (lowerUrl.includes('other')) stem = 'other';
+
+            // Si el nombre del archivo original era distinto, intentamos usarlo
+            // Pero para efectos de color y orden, usaremos las categorías estándar
+
+            const color = colors[stem] || '#7C4DFF';
+
+            // Pasamos 'stem' como nombre para que TrackComponent sepa qué poner en el título
+            tracks.push(new TrackComponent(tWrapper, stem, url, color));
         });
 
-        if (tracks.length > 0) {
-            const checkReadyInterval = setInterval(() => {
-                if (tracks[0].isReady()) {
-                    globalDuration = tracks[0].wavesurfer.getDuration();
-                    totalTimeSpan.textContent = formatTime(globalDuration);
-                    clearInterval(checkReadyInterval);
-                }
-            }, 500);
-        }
+        const checkInt = setInterval(() => {
+            if (tracks[0] && tracks[0].isReady()) {
+                globalDuration = tracks[0].wavesurfer.getDuration();
+                totalTimeSpan.textContent = formatTime(globalDuration);
+                clearInterval(checkInt);
+            }
+        }, 500);
 
         if (typeof Sortable !== 'undefined') {
-            sortableInstance = new Sortable(tracksWrapper, {
-                animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
-            });
+            if (sortableInstance) sortableInstance.destroy();
+            try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
         }
-        assignPlayerListeners(tracksWrapper);
+
+        assignPlayerListeners(tWrapper);
     }
 
-    function assignPlayerListeners(container) {
-        btnPlayPause.addEventListener('click', () => {
-            if (isPlaying) {
-                tracks.forEach(t => t.pause());
-                isPlaying = false;
-                btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">play_arrow</span>';
-                stopTimer();
-            } else {
-                tracks.forEach(t => t.play());
-                isPlaying = true;
-                btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">pause</span>';
-                startTimer();
-            }
+    function assignPlayerListeners(c) {
+        btnPlayPause.onclick = () => {
+            if (isPlaying) { tracks.forEach(t => t.pause()); isPlaying = false; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>'; clearInterval(progressInterval); }
+            else { tracks.forEach(t => t.play()); isPlaying = true; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">pause</span>'; startTimer(); }
+        };
+        btnStop.onclick = () => { tracks.forEach(t => t.stop()); isPlaying = false; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>'; clearInterval(progressInterval); currentTimeSpan.textContent = "00:00"; };
+        c.addEventListener('track-solo', (e) => {
+            const req = tracks.find(t => t.name === e.detail.name);
+            if (req.isSolo) tracks.forEach(t => { if (t.name !== req.name) t.disableSolo(); });
+            refreshMuteState();
         });
-        btnStop.addEventListener('click', () => {
-            tracks.forEach(t => t.stop());
-            isPlaying = false;
-            btnPlayPause.innerHTML = '<span class="material-icons" style="font-size: 28px;">play_arrow</span>';
-            stopTimer();
-            currentTimeSpan.textContent = "00:00";
-        });
-        container.addEventListener('track-solo', (e) => handleSoloExclusive(e.detail.name));
-        container.addEventListener('track-mute', () => refreshAllTracksState());
-        container.addEventListener('track-seek', (e) => syncAllTracks(e.detail.progress, e.detail.sourceTrack));
-    }
-
-    function handleSoloExclusive(activeTrackName) {
-        const trackRequesting = tracks.find(t => t.name === activeTrackName);
-        if (trackRequesting.isSolo) {
-            tracks.forEach(t => { if (t.name !== activeTrackName) t.disableSolo(); });
-        }
-        refreshAllTracksState();
-    }
-
-    function refreshAllTracksState() {
-        const isAnySoloActive = tracks.some(t => t.isSolo);
-        tracks.forEach(track => {
-            let shouldBeSilent = false;
-            if (isAnySoloActive) {
-                if (!track.isSolo) shouldBeSilent = true;
-            } else {
-                if (track.isMuted) shouldBeSilent = true;
-            }
-            track.setSilent(shouldBeSilent);
+        c.addEventListener('track-mute', refreshMuteState);
+        c.addEventListener('track-seek', (e) => {
+            tracks.forEach(t => { if (t.name !== e.detail.sourceTrack) t.seekTo(e.detail.progress); });
+            currentTimeSpan.textContent = formatTime(globalDuration * e.detail.progress);
         });
     }
 
-    function syncAllTracks(progress, sourceName) {
-        tracks.forEach(track => { if (track.name !== sourceName) track.seekTo(progress); });
-        const currentTime = globalDuration * progress;
-        currentTimeSpan.textContent = formatTime(currentTime);
+    function refreshMuteState() {
+        const anySolo = tracks.some(t => t.isSolo);
+        tracks.forEach(t => {
+            let silent = false;
+            if (anySolo) { if (!t.isSolo) silent = true; }
+            else { if (t.isMuted) silent = true; }
+            t.setSilent(silent);
+        });
     }
 
     function startTimer() {
         if (progressInterval) clearInterval(progressInterval);
         progressInterval = setInterval(() => {
-            if (tracks.length === 0) return;
-            const currentTime = tracks[0].wavesurfer.getCurrentTime();
-            currentTimeSpan.textContent = formatTime(currentTime);
-            if (globalDuration > 0 && currentTime >= globalDuration) btnStop.click();
+            if (!tracks.length) return;
+            const cur = tracks[0].wavesurfer.getCurrentTime();
+            currentTimeSpan.textContent = formatTime(cur);
+            if (globalDuration > 0 && cur >= globalDuration) btnStop.click();
         }, 100);
     }
 
-    function stopTimer() { clearInterval(progressInterval); }
-    function formatTime(seconds) {
-        if (!seconds) return "00:00";
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
+    function formatTime(s) { if (!s) return "00:00"; const m = Math.floor(s / 60), sc = Math.floor(s % 60); return `${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}`; }
 
     function resetApplication() {
-        if (isPlaying) btnStop.click();
+        if (isPlaying && btnStop) btnStop.click();
         tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); });
         tracks = [];
-        if (sortableInstance) sortableInstance.destroy();
-        resultsArea.classList.add('hidden');
         resultsArea.innerHTML = '';
-        appHeader.classList.remove('hidden');
+        resultsArea.classList.add('hidden');
+
+        appHeaderElement.classList.remove('hidden');
+        uploadUi.classList.remove('hidden');
+
+        glassCard.classList.remove('expanded');
         resetUI();
-        document.querySelector('.glass-card').classList.remove('expanded');
-        currentSongData = null; // Resetear datos de canción
+        currentSongData = null;
     }
 });

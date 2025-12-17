@@ -3,37 +3,36 @@ import { dbService } from '../services/dbService.js';
 export class LibraryModal {
     constructor(userId, onLoadSong) {
         this.userId = userId;
-        this.onLoadSong = onLoadSong; // Función que cargará la canción en el DAW
+        this.onLoadSong = onLoadSong;
         this.overlay = null;
         this.render();
     }
 
     async render() {
-        // 1. Crear el fondo oscuro (Overlay)
         this.overlay = document.createElement('div');
         this.overlay.className = 'modal-overlay';
         this.overlay.innerHTML = `
             <div class="glass-card modal-content">
                 <div class="modal-header">
                     <h3>🎵 Mi Biblioteca</h3>
-                    <button id="btnCloseModal" class="btn-icon"><span class="material-icons">close</span></button>
+                    <button id="btnCloseModal" class="btn-icon">
+                        <span class="material-icons">close</span>
+                    </button>
                 </div>
                 <div id="songsList" class="songs-list">
-                    <div class="spinner" style="margin: 20px auto;"></div>
+                    <div class="spinner" style="margin: 40px auto;"></div>
                 </div>
             </div>
         `;
         document.body.appendChild(this.overlay);
 
-        // 2. Listeners
         this.overlay.querySelector('#btnCloseModal').addEventListener('click', () => this.close());
 
-        // Cerrar si clicamos fuera de la tarjeta
+        // Cerrar al hacer clic fuera
         this.overlay.addEventListener('click', (e) => {
             if (e.target === this.overlay) this.close();
         });
 
-        // 3. Cargar datos
         await this.loadSongs();
     }
 
@@ -43,37 +42,56 @@ export class LibraryModal {
             const songs = await dbService.getUserSongs(this.userId);
 
             if (songs.length === 0) {
-                listContainer.innerHTML = `<p style="text-align:center; color: #aaa; padding: 20px;">Aún no tienes canciones guardadas.</p>`;
+                listContainer.innerHTML = `
+                    <div style="text-align:center; padding: 40px; color: #666;">
+                        <span class="material-icons" style="font-size: 40px; margin-bottom: 10px; display:block;">music_off</span>
+                        <p>No tienes canciones guardadas aún.</p>
+                    </div>`;
                 return;
             }
 
-            listContainer.innerHTML = ''; // Limpiar spinner
+            listContainer.innerHTML = '';
 
             songs.forEach(song => {
                 const item = document.createElement('div');
                 item.className = 'song-item';
 
-                // Formatear fecha
                 const date = song.createdAt ? new Date(song.createdAt.seconds * 1000).toLocaleDateString() : 'Reciente';
 
+                // HTML ESTRUCTURADO PARA CORTAR TEXTO
                 item.innerHTML = `
                     <div class="song-info">
-                        <div class="song-title">${song.title}</div>
-                        <div class="song-meta">
-                            <span>${date}</span> • 
-                            <span style="text-transform: uppercase;">${song.format}</span> • 
-                            <span>${song.bpm > 0 ? song.bpm + ' BPM' : ''}</span>
-                        </div>
+                        <div class="song-title" title="${song.title}">${song.title}</div>
+                        <div class="song-meta">${date} • ${song.format.toUpperCase()} • ${song.bpm > 0 ? song.bpm + ' BPM' : ''}</div>
                     </div>
-                    <button class="btn-load">
-                        <span class="material-icons">play_circle</span> Cargar
-                    </button>
+                    
+                    <div class="song-actions">
+                        <button class="btn-icon-delete" title="Borrar">
+                            <span class="material-icons">delete_outline</span>
+                        </button>
+                        <button class="btn-load">
+                            <span class="material-icons" style="font-size: 18px;">play_arrow</span> Cargar
+                        </button>
+                    </div>
                 `;
 
-                // Acción de Cargar
+                // Evento Cargar
                 item.querySelector('.btn-load').addEventListener('click', () => {
-                    this.onLoadSong(song); // Pasamos los datos al main.js
+                    this.onLoadSong(song);
                     this.close();
+                });
+
+                // Evento Borrar
+                item.querySelector('.btn-icon-delete').addEventListener('click', async (e) => {
+                    if (confirm(`¿Estás seguro de borrar "${song.title}" y todos sus archivos?`)) {
+                        item.style.opacity = '0.5';
+                        item.style.pointerEvents = 'none';
+
+                        // PASAMOS 'song' COMPLETO (contiene las URLs)
+                        await dbService.deleteSong(this.userId, song.id, song);
+
+                        this.loadSongs();
+                    }
                 });
 
                 listContainer.appendChild(item);
