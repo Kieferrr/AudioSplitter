@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadUi = document.getElementById('upload-ui');
     const resultsArea = document.getElementById('results-area');
 
-    // --- VARIABLES GLOBALES DEL REPRODUCTOR (Aquí para evitar scope issues) ---
+    // --- VARIABLES GLOBALES DEL REPRODUCTOR ---
     let tracks = [];
     let isPlaying = false;
     let globalDuration = 0;
@@ -24,8 +24,41 @@ document.addEventListener('DOMContentLoaded', () => {
     let visualTimerInterval = null;
     let currentSongData = null;
     let sortableInstance = null;
-    let globalMasterVolume = 1.0; // DEFINIDO AQUÍ PARA QUE FUNCIONE SIEMPRE
+    let globalMasterVolume = 1.0;
     let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
+
+    // --- FUNCIÓN AUXILIAR PARA TRANSICIONES SUAVES ---
+    const transitionViews = (oldElem, newElem, onComplete = () => { }) => {
+        if (oldElem && !oldElem.classList.contains('hidden')) {
+            // 1. Animación de salida
+            oldElem.classList.add('fade-out');
+            oldElem.classList.remove('fade-in');
+
+            setTimeout(() => {
+                // 2. Ocultar real y limpiar clases
+                oldElem.classList.add('hidden');
+                oldElem.classList.remove('fade-out');
+
+                // 3. Ejecutar cambios estructurales (ej: expandir carta)
+                onComplete();
+
+                // 4. Animación de entrada
+                if (newElem) {
+                    newElem.classList.remove('hidden');
+                    newElem.classList.add('fade-in');
+                    // Limpiar clase de entrada al terminar para no estorbar
+                    setTimeout(() => newElem.classList.remove('fade-in'), 500);
+                }
+            }, 300); // Esperamos 300ms (duración del fadeOut CSS)
+        } else {
+            // Si no había nada antes, solo mostramos lo nuevo
+            onComplete();
+            if (newElem) {
+                newElem.classList.remove('hidden');
+                newElem.classList.add('fade-in');
+            }
+        }
+    };
 
     // --- PANEL USUARIO ---
     const updateHeaderWithUser = (user) => {
@@ -49,16 +82,20 @@ document.addEventListener('DOMContentLoaded', () => {
             glassCard.appendChild(userPanel);
 
             document.getElementById('btnLogout').addEventListener('click', async () => {
-                await authService.logout(); window.location.reload();
+                await authService.logout();
+                // NO usas window.location.reload()
+                // Llamamos a showLogin manualmente
+                showLogin();
             });
             document.getElementById('btnLibrary').addEventListener('click', () => {
                 new LibraryModal(user.uid, (songData) => {
+                    // Usamos resetApplication para volver al inicio suavemente antes de cargar
                     resetApplication();
                     setTimeout(() => {
                         currentSongData = songData;
-                        // AQUÍ ESTÁ LA CLAVE: true significa "Viene de guardado"
+                        // isSaved = true porque viene de la biblioteca
                         initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
-                    }, 50);
+                    }, 350); // Un poco más de tiempo para dar espacio a la transición de reset
                 });
             });
         } else {
@@ -69,23 +106,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 </button>
             `;
             glassCard.appendChild(userPanel);
-            document.getElementById('btnLoginGuest').addEventListener('click', () => window.location.reload());
+            document.getElementById('btnLoginGuest').addEventListener('click', () => {
+                showLogin();
+            });
         }
     };
 
     const showApp = (user) => {
         currentUser = user;
-        authContainer.classList.add('hidden');
-        authContainer.innerHTML = '';
-        appContainer.classList.remove('hidden');
         updateHeaderWithUser(user);
+
+        // TRANSICIÓN SUAVE: Login -> App
+        transitionViews(authContainer, appContainer, () => {
+            authContainer.innerHTML = '';
+        });
     };
 
     const showLogin = () => {
         currentUser = null;
-        appContainer.classList.add('hidden');
-        authContainer.classList.remove('hidden');
-        new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
+
+        // Si ya estamos en login, no hacer nada
+        if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) return;
+
+        // TRANSICIÓN SUAVE: App -> Login
+        // Usamos transitionViews para ocultar la App y mostrar el Auth
+        transitionViews(appContainer, authContainer, () => {
+            // Limpiamos la App para que no quede basura visual
+            resetApplication();
+            glassCard.classList.remove('expanded'); // Asegurar tamaño pequeño
+
+            // Iniciamos el componente de Auth
+            new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
+        });
     };
 
     authService.observeAuthState((user) => {
@@ -169,7 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             currentSongData = { ...data, format: fmt };
             stopProgressTimer();
-            // isSaved = false (porque es nueva)
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
         } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
     }
@@ -188,15 +239,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             currentSongData = { ...data, format: formatSelect.value };
             stopProgressTimer();
-            // isSaved = false (porque es nueva)
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
         } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
     }
 
     function showLoader(txt) {
-        uploadUi.classList.add('hidden');
         loaderText.textContent = txt;
-        loader.classList.remove('hidden');
+        // TRANSICIÓN SUAVE: Upload UI -> Loader
+        transitionViews(uploadUi, loader);
     }
 
     function resetUI() {
@@ -207,18 +257,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- REPRODUCTOR (DAW) ---
-    // Agregamos parámetro 'isSaved' para controlar el botón guardar
     function initDAW(files, name, zip, inst, bpm, key, isSaved = false) {
-        loader.classList.add('hidden');
-        uploadUi.classList.add('hidden');
-        appHeaderElement.classList.add('hidden');
-
-        glassCard.classList.add('expanded');
-        resultsArea.classList.remove('hidden');
-
         const safeName = name ? name.replace(/\.[^/.]+$/, "") : "Mix";
 
-        // BOTÓN GUARDAR: Solo aparece si hay usuario Y NO está guardada (isSaved == false)
+        // Botón Guardar
         const saveBtnHTML = (currentUser && !isSaved) ? `
             <button id="btnSaveToCloud" class="action-btn">
                 <span class="material-icons">cloud_upload</span> Guardar
@@ -226,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bpmBadge = bpm > 0 ? `<div class="badges-container"><span class="badge-info">BPM ${bpm}</span><span class="badge-info">KEY ${key}</span></div>` : '';
 
-        // RESTAURADO: Textos completos, iconos correctos, botón nuevo negro
+        // Construimos el HTML, pero AÚN NO SE VE
         resultsArea.innerHTML = `
             <div class="player-header">
                 <div class="player-top-row">
@@ -262,67 +304,70 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="tracks-wrapper"></div>
         `;
 
-        // Listeners
-        document.getElementById('btnReset').onclick = resetApplication;
-        if (document.getElementById('btnSaveToCloud')) {
-            document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
-                const b = e.currentTarget; b.disabled = true; b.innerHTML = '...';
-                try { await dbService.saveSong(currentUser.uid, currentSongData); alert("¡Guardada!"); b.remove(); /* Eliminamos el botón al guardar */ }
-                catch (e) { alert(e.message); b.disabled = false; b.innerHTML = 'Guardar'; }
-            });
-        }
-
-        btnPlayPause = document.getElementById('btnPlayPause');
-        btnStop = document.getElementById('btnStop');
-        currentTimeSpan = document.getElementById('currentTime');
-        totalTimeSpan = document.getElementById('totalTime');
-        const mVol = document.getElementById('masterVolume');
-
-        // CORRECCIÓN VOLUMEN: Seteamos el valor inicial y el listener
-        mVol.value = globalMasterVolume;
-        mVol.oninput = (e) => {
-            globalMasterVolume = parseFloat(e.target.value);
-            tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
-        };
-
-        const tWrapper = document.getElementById('tracks-wrapper');
-        const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
-        tracks = [];
-
-        files.forEach(url => {
-            // MEJORA: Detección de nombre más robusta
-            // Buscamos palabras clave en cualquier parte de la URL, no solo al inicio
-            const lowerUrl = url.toLowerCase();
-            let stem = 'other'; // Default
-
-            if (lowerUrl.includes('vocals')) stem = 'vocals';
-            else if (lowerUrl.includes('drums')) stem = 'drums';
-            else if (lowerUrl.includes('bass')) stem = 'bass';
-            else if (lowerUrl.includes('other')) stem = 'other';
-
-            // Si el nombre del archivo original era distinto, intentamos usarlo
-            // Pero para efectos de color y orden, usaremos las categorías estándar
-
-            const color = colors[stem] || '#7C4DFF';
-
-            // Pasamos 'stem' como nombre para que TrackComponent sepa qué poner en el título
-            tracks.push(new TrackComponent(tWrapper, stem, url, color));
+        // --- TRANSICIÓN SUAVE: Loader -> Reproductor ---
+        // 1. Oculta Loader (Fade Out)
+        // 2. Expande tarjeta y Oculta Header (Structural)
+        // 3. Muestra Reproductor (Fade In)
+        transitionViews(loader, resultsArea, () => {
+            appHeaderElement.classList.add('hidden');
+            uploadUi.classList.add('hidden');
+            glassCard.classList.add('expanded');
         });
 
-        const checkInt = setInterval(() => {
-            if (tracks[0] && tracks[0].isReady()) {
-                globalDuration = tracks[0].wavesurfer.getDuration();
-                totalTimeSpan.textContent = formatTime(globalDuration);
-                clearInterval(checkInt);
+        // Configuración de Listeners y Tracks
+        setTimeout(() => { // Pequeño delay para asegurar que el DOM esté listo
+            document.getElementById('btnReset').onclick = resetApplication;
+
+            if (document.getElementById('btnSaveToCloud')) {
+                document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
+                    const b = e.currentTarget; b.disabled = true; b.innerHTML = '...';
+                    try { await dbService.saveSong(currentUser.uid, currentSongData); alert("¡Guardada!"); b.remove(); }
+                    catch (e) { alert(e.message); b.disabled = false; b.innerHTML = 'Guardar'; }
+                });
             }
-        }, 500);
 
-        if (typeof Sortable !== 'undefined') {
-            if (sortableInstance) sortableInstance.destroy();
-            try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
-        }
+            btnPlayPause = document.getElementById('btnPlayPause');
+            btnStop = document.getElementById('btnStop');
+            currentTimeSpan = document.getElementById('currentTime');
+            totalTimeSpan = document.getElementById('totalTime');
+            const mVol = document.getElementById('masterVolume');
 
-        assignPlayerListeners(tWrapper);
+            mVol.value = globalMasterVolume;
+            mVol.oninput = (e) => {
+                globalMasterVolume = parseFloat(e.target.value);
+                tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
+            };
+
+            const tWrapper = document.getElementById('tracks-wrapper');
+            const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
+            tracks = [];
+
+            files.forEach(url => {
+                const lowerUrl = url.toLowerCase();
+                let stem = 'other';
+                if (lowerUrl.includes('vocals')) stem = 'vocals';
+                else if (lowerUrl.includes('drums')) stem = 'drums';
+                else if (lowerUrl.includes('bass')) stem = 'bass';
+                else if (lowerUrl.includes('other')) stem = 'other';
+                const color = colors[stem] || '#7C4DFF';
+                tracks.push(new TrackComponent(tWrapper, stem, url, color));
+            });
+
+            const checkInt = setInterval(() => {
+                if (tracks[0] && tracks[0].isReady()) {
+                    globalDuration = tracks[0].wavesurfer.getDuration();
+                    totalTimeSpan.textContent = formatTime(globalDuration);
+                    clearInterval(checkInt);
+                }
+            }, 500);
+
+            if (typeof Sortable !== 'undefined') {
+                if (sortableInstance) sortableInstance.destroy();
+                try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
+            }
+
+            assignPlayerListeners(tWrapper);
+        }, 50);
     }
 
     function assignPlayerListeners(c) {
@@ -367,16 +412,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
-        tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); });
-        tracks = [];
-        resultsArea.innerHTML = '';
-        resultsArea.classList.add('hidden');
 
-        appHeaderElement.classList.remove('hidden');
-        uploadUi.classList.remove('hidden');
+        // --- TRANSICIÓN SUAVE DE REGRESO: Reproductor -> Inicio ---
+        transitionViews(resultsArea, uploadUi, () => {
+            // Acciones estructurales
+            appHeaderElement.classList.remove('hidden'); // Vuelve título
+            glassCard.classList.remove('expanded'); // Se encoge tarjeta suavemente
 
-        glassCard.classList.remove('expanded');
-        resetUI();
-        currentSongData = null;
+            // Limpieza lógica
+            tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); });
+            tracks = [];
+            resultsArea.innerHTML = '';
+
+            resetUI();
+            currentSongData = null;
+        });
     }
 });
