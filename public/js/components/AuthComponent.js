@@ -1,31 +1,69 @@
 import { authService } from '../services/authService.js';
 
 export class AuthComponent {
-    constructor(containerElement, onLoginSuccess, onGuestAccess) {
-        this.container = containerElement;
-        this.onLoginSuccess = onLoginSuccess; // Función a ejecutar cuando entra un usuario
-        this.onGuestAccess = onGuestAccess;   // Función a ejecutar cuando entra un invitado
-        this.isRegistering = false; // Estado inicial: Login
-
+    constructor(container, onLoginSuccess, onSkip) {
+        this.container = container;
+        this.onLoginSuccess = onLoginSuccess;
+        this.onSkip = onSkip;
+        this.isLoginMode = true; // Empezamos en Login
         this.render();
     }
 
-    render() {
-        // Título y Texto del botón según el estado
-        const title = this.isRegistering ? "Crear Cuenta" : "Iniciar Sesión";
-        const actionBtnText = this.isRegistering ? "Registrarse" : "Ingresar";
-        const toggleText = this.isRegistering
-            ? "¿Ya tienes cuenta? <span class='link-highlight'>Inicia sesión</span>"
-            : "¿No tienes cuenta? <span class='link-highlight'>Regístrate</span>";
+    // Función auxiliar para animar el cambio interno del formulario
+    async switchMode(targetMode) {
+        const card = this.container.querySelector('.auth-card');
 
-        this.container.innerHTML = `
-            <div class="glass-card auth-card">
+        // 1. Fade Out del contenido actual
+        card.classList.add('fade-out');
+        card.classList.remove('fade-in');
+
+        // Esperamos que termine la animación (300ms)
+        await new Promise(r => setTimeout(r, 300));
+
+        // 2. Cambiamos el modo y renderizamos el HTML nuevo
+        this.isLoginMode = targetMode;
+        this.container.innerHTML = this.getHTML();
+
+        // Re-asignar eventos porque el HTML es nuevo
+        this.addEventListeners();
+
+        // 3. Fade In del nuevo contenido
+        const newCard = this.container.querySelector('.auth-card');
+        newCard.classList.remove('fade-out'); // Limpieza
+        newCard.classList.add('fade-in');
+
+        // Limpiar clase de animación después
+        setTimeout(() => newCard.classList.remove('fade-in'), 500);
+    }
+
+    render() {
+        // Renderizado inicial (sin animación de salida)
+        this.container.innerHTML = this.getHTML();
+        this.addEventListeners();
+
+        // Animación de entrada suave inicial
+        const card = this.container.querySelector('.auth-card');
+        if (card) card.classList.add('fade-in');
+    }
+
+    getHTML() {
+        const title = this.isLoginMode ? 'Iniciar Sesión' : 'Crear Cuenta';
+        const btnText = this.isLoginMode ? 'Entrar' : 'Registrarse';
+
+        const toggleText = this.isLoginMode
+            ? '¿No tienes cuenta? <span class="link-highlight">Regístrate</span>'
+            : '¿Ya tienes cuenta? <span class="link-highlight">Inicia sesión</span>';
+
+        return `
+            <div class="auth-card">
                 <div class="auth-header">
-                    <h2>${title}</h2>
-                    <p class="auth-subtitle">Guarda tus canciones y accede a ellas desde cualquier lugar.</p>
+                    <h2>AudioSplitter <span class="accent">AI</span></h2>
+                    <p class="auth-subtitle">${title}</p>
                 </div>
 
-                <form id="authForm" class="auth-form">
+                <div id="auth-error-msg" class="auth-error hidden"></div>
+
+                <form id="auth-form">
                     <div class="input-group">
                         <span class="material-icons">email</span>
                         <input type="email" id="email" placeholder="Correo electrónico" required autocomplete="email">
@@ -36,74 +74,79 @@ export class AuthComponent {
                         <input type="password" id="password" placeholder="Contraseña" required autocomplete="current-password">
                     </div>
 
-                    <div id="authError" class="auth-error hidden"></div>
-
-                    <button type="submit" class="btn-primary full-width" id="submitBtn">
-                        ${actionBtnText}
+                    <button type="submit" id="btn-submit" class="btn-primary full-width">
+                        ${btnText}
                     </button>
                 </form>
 
-                <div class="auth-toggle" id="toggleAuth">
+                <div class="auth-toggle" id="btn-toggle-mode">
                     ${toggleText}
                 </div>
 
-                <div class="divider">
-                    <span>O</span>
-                </div>
-
-                <button id="guestBtn" class="btn-secondary full-width">
+                <div class="divider"><span>O</span></div>
+                <button id="btn-guest" class="btn-secondary full-width">
                     Continuar como Invitado
                 </button>
             </div>
         `;
-
-        this.addListeners();
     }
 
-    addListeners() {
-        const form = this.container.querySelector('#authForm');
-        const toggleBtn = this.container.querySelector('#toggleAuth');
-        const guestBtn = this.container.querySelector('#guestBtn');
-        const errorDiv = this.container.querySelector('#authError');
-        const submitBtn = this.container.querySelector('#submitBtn');
+    addEventListeners() {
+        const form = this.container.querySelector('#auth-form');
+        const toggleBtn = this.container.querySelector('#btn-toggle-mode');
+        const guestBtn = this.container.querySelector('#btn-guest');
+        const submitBtn = this.container.querySelector('#btn-submit');
 
-        // 1. Manejo del Formulario (Login/Registro)
+        // Submit Form
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = form.email.value;
             const password = form.password.value;
+            const errorMsg = this.container.querySelector('#auth-error-msg');
 
-            errorDiv.classList.add('hidden');
+            // Feedback visual de carga
             submitBtn.disabled = true;
-            submitBtn.textContent = "Procesando...";
+            submitBtn.textContent = 'Procesando...';
+            errorMsg.classList.add('hidden');
 
             try {
                 let user;
-                if (this.isRegistering) {
-                    user = await authService.register(email, password);
-                } else {
+                if (this.isLoginMode) {
                     user = await authService.login(email, password);
+                } else {
+                    user = await authService.register(email, password);
                 }
-                // Si todo sale bien, llamamos al callback de éxito
-                if (this.onLoginSuccess) this.onLoginSuccess(user);
-
-            } catch (errorMsg) {
-                errorDiv.textContent = errorMsg;
-                errorDiv.classList.remove('hidden');
+                this.onLoginSuccess(user);
+            } catch (error) {
+                errorMsg.textContent = error.message;
+                errorMsg.classList.remove('hidden');
                 submitBtn.disabled = false;
-                submitBtn.textContent = this.isRegistering ? "Registrarse" : "Ingresar";
+                submitBtn.textContent = this.isLoginMode ? 'Entrar' : 'Registrarse';
+
+                // Animación de "shake" (temblor) para error
+                const card = this.container.querySelector('.auth-card');
+                card.animate([
+                    { transform: 'translateX(0)' },
+                    { transform: 'translateX(-10px)' },
+                    { transform: 'translateX(10px)' },
+                    { transform: 'translateX(0)' }
+                ], { duration: 300 });
             }
         });
 
-        // 2. Alternar entre Login y Registro
+        // Toggle Login / Register (CON ANIMACIÓN)
         toggleBtn.addEventListener('click', () => {
-            this.isRegistering = !this.isRegistering;
-            this.render(); // Re-renderizamos para cambiar textos
+            this.switchMode(!this.isLoginMode);
         });
 
-        // 3. Modo Invitado
-        guestBtn.addEventListener('click', () => {
-            if (this.onGuestAccess) this.onGuestAccess();
-        });
+        // Guest Mode
+        if (guestBtn) {
+            guestBtn.addEventListener('click', () => {
+                // Transición de salida antes de cambiar
+                const card = this.container.querySelector('.auth-card');
+                card.classList.add('fade-out');
+                setTimeout(() => this.onSkip(), 300);
+            });
+        }
     }
 }

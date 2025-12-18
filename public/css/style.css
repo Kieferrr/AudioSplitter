@@ -25,7 +25,7 @@ body {
     display: none !important;
 }
 
-/* Fondo */
+/* --- FONDO ANIMADO --- */
 .background-area {
     position: fixed;
     top: 0;
@@ -37,13 +37,18 @@ body {
 
 .circles li {
     position: absolute;
+    display: block;
     list-style: none;
     width: 20px;
     height: 20px;
-    background: rgba(255, 255, 255, 0.03);
-    animation: animate 25s linear infinite;
+    background: rgba(255, 255, 255, 0.05);
     bottom: -150px;
     border-radius: 50%;
+
+    /* ACELERACIÓN POR HARDWARE */
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    animation: animate 25s linear infinite;
 }
 
 .circles li:nth-child(1) {
@@ -80,7 +85,7 @@ body {
     }
 }
 
-/* --- CARD PRINCIPAL --- */
+/* --- CARD PRINCIPAL (VIDRIO) --- */
 .main-wrapper {
     display: flex;
     justify-content: center;
@@ -90,18 +95,37 @@ body {
 }
 
 .glass-card {
-    background: var(--glass-bg);
+    /* Fondo base sólido (Fallback por si no funciona el blur) */
+    background: rgba(18, 18, 23, 0.95);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     border-radius: 20px;
     padding: 40px;
+
     width: 100%;
     max-width: 550px;
     text-align: center;
     position: relative;
-    transition: all 0.6s cubic-bezier(0.2, 1, 0.3, 1);
+
+    /* OPTIMIZACIÓN DE MOVIMIENTO (Aceleración por Hardware) */
+    transform: translate3d(0, 0, 0);
+    will-change: width, max-width, height, padding;
+
+    /* Transiciones suaves */
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+        max-width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+        height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+        padding 0.6s ease;
+}
+
+/* Regla de compatibilidad para efecto Blur (separada para evitar errores) */
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+    .glass-card {
+        background: rgba(18, 18, 23, 0.75);
+        /* Más transparente si hay blur */
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
 }
 
 .glass-card.expanded {
@@ -110,11 +134,10 @@ body {
     padding: 30px;
 }
 
-/* Header App */
+/* --- HEADER APP --- */
 .app-header {
     margin-bottom: 30px;
     padding-top: 60px;
-    /* Espacio para user panel */
 }
 
 .app-header h1 {
@@ -133,41 +156,37 @@ body {
     font-size: 0.9rem;
 }
 
-/* --- PANEL DE USUARIO (LÓGICA DINÁMICA) --- */
+/* --- PANEL DE USUARIO --- */
 #user-panel {
     position: absolute;
     top: 20px;
 
-    /* ESTADO 1: EN EL CENTRO (Login/Inicio) */
+    /* Estado 1: Centrado */
     left: 50%;
     transform: translateX(-50%);
 
     display: flex;
     align-items: center;
     gap: 20px;
-    /* Aumenté el espacio entre elementos */
     background: rgba(255, 255, 255, 0.05);
     padding: 8px 25px;
-    /* Más espacio interno (antes 5px 20px) */
     border-radius: 30px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 50;
     backdrop-filter: blur(5px);
     transition: all 0.6s cubic-bezier(0.2, 1, 0.3, 1);
 
-    /* CLAVE: Asegura que el contenedor se estire lo necesario */
     width: auto;
     min-width: fit-content;
 }
 
-/* ESTADO 2: A LA IZQUIERDA (Cuando hay canción) */
+/* Estado 2: A la izquierda (cuando expandido) */
 .glass-card.expanded #user-panel {
     left: 30px;
     transform: translateX(0);
     background: rgba(0, 0, 0, 0.5);
 }
 
-/* Botones del Header (Mis Canciones) */
 .header-btn {
     background: transparent;
     border: none;
@@ -176,10 +195,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    /* Un poco más de aire entre icono y texto */
     font-size: 0.9rem;
-
-    /* LA SOLUCIÓN: Prohibido saltar de línea */
     white-space: nowrap;
 }
 
@@ -208,24 +224,37 @@ body {
     align-items: center;
 }
 
-/* --- LOGIN --- */
+/* --- LOGIN / AUTH --- */
 .auth-card {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 20px;
     padding: 50px 40px;
     width: 100%;
-    max-width: 420px;
+
+    /* CAMBIO 1: Ancho igual al de la app principal (antes era 420px) */
+    max-width: 550px;
+
     text-align: center;
     margin: auto;
+
+    /* Agregamos la transición suave de tamaño aquí también */
+    transition: all 0.6s cubic-bezier(0.2, 1, 0.3, 1);
 }
 
 .auth-header h2 {
-    font-size: 2rem;
+    font-size: 2.5rem;
     margin-bottom: 10px;
-    background: linear-gradient(90deg, #fff, var(--accent-color));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+    color: white;
+    /* Ahora es blanco sólido, igual que en la app principal */
+
+    /* ELIMINAMOS las líneas de background-clip y gradient que causaban la diferencia */
+}
+
+/* Aseguramos que el "AI" (la clase accent) herede el color correcto dentro del h2 */
+.auth-header h2 .accent {
+    color: var(--accent-color);
 }
 
 .auth-subtitle {
@@ -264,14 +293,16 @@ body {
     background: rgba(0, 0, 0, 0.6) !important;
 }
 
-/* Fix Autocompletar */
+/* Fix Autocompletar Chrome */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px #1a1a1a inset !important;
+    -webkit-box-shadow: 0 0 0 100px #1a1a1a inset !important;
     -webkit-text-fill-color: white !important;
-    transition: background-color 5000s ease-in-out 0s;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px !important;
+    caret-color: white;
 }
 
 .full-width {
@@ -452,9 +483,12 @@ select option {
     color: #ffffff;
     font-weight: 600;
     padding-left: 100%;
-    animation: marquee 15s linear infinite;
-    transform: translateZ(0);
+
+    /* Optimización Marquee */
+    transform: translate3d(0, 0, 0);
     will-change: transform;
+    backface-visibility: hidden;
+    animation: marquee 15s linear infinite;
 }
 
 @keyframes marquee {
@@ -486,7 +520,6 @@ select option {
     letter-spacing: 0.5px;
 }
 
-/* Botones Acción (Derecha) */
 .actions-right {
     position: absolute;
     right: 0;
@@ -518,7 +551,6 @@ select option {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* ESTILO NEGRO PARA 'NUEVO PROYECTO' */
 .action-btn.black-btn {
     background: rgba(0, 0, 0, 0.6);
     border-color: rgba(255, 255, 255, 0.15);
@@ -531,7 +563,6 @@ select option {
     border-color: white;
 }
 
-/* Controles Reproductor */
 .controls-row {
     display: flex;
     align-items: center;
@@ -545,7 +576,6 @@ select option {
     gap: 15px;
 }
 
-/* Botones Play/Stop REDONDOS y con color */
 .ctrl-circle {
     border-radius: 50%;
     width: 55px;
@@ -574,7 +604,6 @@ select option {
     transform: scale(1.1);
 }
 
-/* SLIDER DE VOLUMEN (Gris como antes) */
 .master-vol-container {
     display: flex;
     align-items: center;
@@ -584,6 +613,7 @@ select option {
 
 input[type=range] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100px;
     background: transparent;
     cursor: pointer;
@@ -630,7 +660,6 @@ input[type=range]::-webkit-slider-thumb {
     background: rgba(255, 255, 255, 0.08);
 }
 
-/* ALINEACIÓN DE NOMBRES STEMS */
 .track-controls {
     width: 160px;
     padding-right: 15px;
@@ -639,7 +668,6 @@ input[type=range]::-webkit-slider-thumb {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    /* Centrado vertical */
     gap: 10px;
 }
 
@@ -683,7 +711,6 @@ input[type=range]::-webkit-slider-thumb {
     color: black;
 }
 
-/* WAVEFORM Y TOOLTIP */
 .track-waveform {
     flex: 1;
     position: relative;
@@ -712,11 +739,9 @@ input[type=range]::-webkit-slider-thumb {
     display: none;
 }
 
-/* PUNTITOS DE ARRASTRE (APAGADOS) */
 .drag-handle {
     cursor: grab;
     color: rgba(255, 255, 255, 0.2);
-    /* Color apagado */
     padding: 5px;
     margin-right: 5px;
     display: flex;
@@ -906,4 +931,47 @@ input[type=range]::-webkit-slider-thumb {
 .btn-load:hover {
     transform: scale(1.05);
     filter: brightness(1.1);
+}
+
+/* --- CLASES DE TRANSICIÓN JS --- */
+.fade-in {
+    animation: fadeIn 0.5s forwards;
+}
+
+.fade-out {
+    animation: fadeOut 0.3s forwards;
+    pointer-events: none;
+}
+
+.invisible {
+    opacity: 0;
+    pointer-events: none;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+        filter: blur(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+        filter: blur(5px);
+    }
 }

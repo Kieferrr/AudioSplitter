@@ -8,4 +8,5 @@ results/
 public/outputs/
 public/temp/
 cookies.txt
-gcp-key.json
+gcp-key.jsonpublic/js/config/firebase-config.js
+public/js/config/firebase-config.js
