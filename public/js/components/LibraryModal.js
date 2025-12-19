@@ -81,18 +81,62 @@ export class LibraryModal {
                     this.close();
                 });
 
-                // Evento Borrar
+                // --- AQUÍ ESTÁ EL CAMBIO ---
+                // Evento Borrar con SweetAlert2
                 item.querySelector('.btn-icon-delete').addEventListener('click', async (e) => {
-                    if (confirm(`¿Estás seguro de borrar "${song.title}" y todos sus archivos?`)) {
-                        item.style.opacity = '0.5';
-                        item.style.pointerEvents = 'none';
 
-                        // PASAMOS 'song' COMPLETO (contiene las URLs)
-                        await dbService.deleteSong(this.userId, song.id, song);
+                    const result = await Swal.fire({
+                        title: '¿Estás seguro?',
+                        text: `Vas a borrar "${song.title}". No podrás recuperarla.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#d33',
+                        cancelButtonColor: '#3085d6',
+                        confirmButtonText: 'Sí, borrar',
+                        cancelButtonText: 'Cancelar',
+                        background: '#1a1a1a', // Fondo oscuro para que combine
+                        color: '#fff'          // Texto blanco
+                    });
 
-                        this.loadSongs();
+                    if (result.isConfirmed) {
+                        try {
+                            // Feedback visual inmediato
+                            item.style.opacity = '0.5';
+                            item.style.pointerEvents = 'none';
+
+                            // Borramos
+                            await dbService.deleteSong(this.userId, song.id, song);
+
+                            // Alerta de éxito pequeña
+                            Swal.fire({
+                                title: '¡Borrado!',
+                                text: 'La canción ha sido eliminada.',
+                                icon: 'success',
+                                timer: 1500,
+                                showConfirmButton: false,
+                                background: '#1a1a1a',
+                                color: '#fff'
+                            });
+
+                            // Recargamos la lista
+                            this.loadSongs();
+
+                        } catch (error) {
+                            console.error("Error al borrar:", error);
+                            Swal.fire({
+                                title: 'Error',
+                                text: 'No se pudo borrar la canción.',
+                                icon: 'error',
+                                background: '#1a1a1a',
+                                color: '#fff'
+                            });
+                            // Restauramos el item si falló
+                            item.style.opacity = '1';
+                            item.style.pointerEvents = 'auto';
+                        }
                     }
                 });
+                // ---------------------------
 
                 listContainer.appendChild(item);
             });

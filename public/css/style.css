@@ -975,3 +975,83 @@ input[type=range]::-webkit-slider-thumb {
         filter: blur(5px);
     }
 }
+
+/* --- BOTÓN INICIAR SESIÓN (INVITADO) --- */
+.btn-login-guest {
+    background: var(--accent-color);
+    border: none;
+    border-radius: 20px;
+    padding: 6px 16px;
+    /* Un poquito más grande para que sea clickable */
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: black;
+
+    /* Animación Suave */
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Hover: Se levanta un poco y brilla */
+.btn-login-guest:hover {
+    transform: translateY(-1px) scale(1.05);
+    filter: brightness(1.1);
+    box-shadow: 0 4px 12px rgba(187, 134, 252, 0.4);
+    /* Sombra morada */
+}
+
+/* Click: Se hunde */
+.btn-login-guest:active {
+    transform: translateY(1px) scale(0.95);
+    filter: brightness(0.9);
+}
+
+/* --- SWEETALERT CUSTOM (MODO DARK/GLASS) --- */
+div:where(.swal2-container) div:where(.swal2-popup) {
+    background: rgba(18, 18, 23, 0.95) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px !important;
+    color: white !important;
+}
+
+div:where(.swal2-container) .swal2-title {
+    font-family: 'Outfit', sans-serif !important;
+    color: white !important;
+}
+
+div:where(.swal2-container) .swal2-html-container {
+    color: #ccc !important;
+}
+
+/* Botón de confirmación (Morado) */
+div:where(.swal2-container) button.swal2-styled.swal2-confirm {
+    background: linear-gradient(135deg, #7c4dff, #3700b3) !important;
+    border-radius: 10px !important;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(124, 77, 255, 0.4) !important;
+}
+
+/* Iconos personalizados */
+.swal2-icon.swal2-success {
+    border-color: #00E676 !important;
+    color: #00E676 !important;
+}
+
+.swal2-icon.swal2-error {
+    border-color: #ff5252 !important;
+    color: #ff5252 !important;
+}
+
+/* --- FIX PARA QUE LA ALERTA SALGA ENCIMA DEL MODAL --- */
+div:where(.swal2-container) {
+    z-index: 99999 !important;
+}
+
+/* Clase para rotar íconos dentro de botones */
+.icon-spin {
+    animation: spin 1s linear infinite;
+    font-size: 1.2rem;
+    /* Ajuste visual */
+}

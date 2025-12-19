@@ -3,6 +3,7 @@ import { authService } from './services/authService.js';
 import { AuthComponent } from './components/AuthComponent.js';
 import { dbService } from './services/dbService.js';
 import { LibraryModal } from './components/LibraryModal.js';
+import { SettingsModal } from './components/SettingsModal.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -39,19 +40,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 oldElem.classList.add('hidden');
                 oldElem.classList.remove('fade-out');
 
-                // 3. Ejecutar cambios estructurales (ej: expandir carta)
+                // 3. Ejecutar cambios estructurales
                 onComplete();
 
                 // 4. Animación de entrada
                 if (newElem) {
                     newElem.classList.remove('hidden');
                     newElem.classList.add('fade-in');
-                    // Limpiar clase de entrada al terminar para no estorbar
                     setTimeout(() => newElem.classList.remove('fade-in'), 500);
                 }
-            }, 300); // Esperamos 300ms (duración del fadeOut CSS)
+            }, 300);
         } else {
-            // Si no había nada antes, solo mostramos lo nuevo
             onComplete();
             if (newElem) {
                 newElem.classList.remove('hidden');
@@ -69,54 +68,57 @@ document.addEventListener('DOMContentLoaded', () => {
         userPanel.id = 'user-panel';
 
         if (user) {
+            const displayName = user.displayName || "Usuario";
+
             userPanel.innerHTML = `
-                <button id="btnLibrary" class="header-btn">
-                    <span class="material-icons">library_music</span> Mis Canciones
-                </button>
-                <div class="v-divider"></div>
-                <span class="user-email">${user.email.split('@')[0]}</span>
-                <button id="btnLogout" class="logout-btn" title="Salir">
-                    <span class="material-icons">logout</span>
-                </button>
-            `;
+            <button id="btnLibrary" class="header-btn">
+                <span class="material-icons">library_music</span> Mis Canciones
+            </button>
+            <div class="v-divider"></div>
+            
+            <span class="user-email">${displayName}</span>
+            
+            <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
+                <span class="material-icons">settings</span>
+            </button>
+
+            <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 5px;">
+                <span class="material-icons">logout</span>
+            </button>
+        `;
             glassCard.appendChild(userPanel);
 
+            // Listener Logout
             document.getElementById('btnLogout').addEventListener('click', async () => {
                 await authService.logout();
-                // NO usas window.location.reload()
-                // Llamamos a showLogin manualmente
                 showLogin();
             });
+
+            // Listener Library
             document.getElementById('btnLibrary').addEventListener('click', () => {
                 new LibraryModal(user.uid, (songData) => {
-                    // Usamos resetApplication para volver al inicio suavemente antes de cargar
                     resetApplication();
                     setTimeout(() => {
                         currentSongData = songData;
-                        // isSaved = true porque viene de la biblioteca
                         initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
-                    }, 350); // Un poco más de tiempo para dar espacio a la transición de reset
+                    }, 350);
                 });
             });
-        } else {
-            userPanel.innerHTML = `
-                <span style="opacity: 0.6; font-size: 0.8rem; margin-right: 8px;">Invitado</span>
-                <button id="btnLoginGuest" style="background:var(--accent-color); border:none; border-radius:20px; padding:4px 10px; cursor:pointer; font-size:0.75rem; font-weight:bold; color:black;">
-                    Iniciar Sesión
-                </button>
-            `;
-            glassCard.appendChild(userPanel);
-            document.getElementById('btnLoginGuest').addEventListener('click', () => {
-                showLogin();
+
+            // NUEVO LISTENER SETTINGS
+            document.getElementById('btnSettings').addEventListener('click', () => {
+                // Pasamos el usuario y qué hacer si se borra la cuenta (showLogin)
+                new SettingsModal(user, () => showLogin());
             });
+
+        } else {
+            // ... (código de invitado igual que antes) ...
         }
     };
 
     const showApp = (user) => {
         currentUser = user;
         updateHeaderWithUser(user);
-
-        // TRANSICIÓN SUAVE: Login -> App
         transitionViews(authContainer, appContainer, () => {
             authContainer.innerHTML = '';
         });
@@ -124,24 +126,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showLogin = () => {
         currentUser = null;
-
-        // Si ya estamos en login, no hacer nada
         if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) return;
 
-        // TRANSICIÓN SUAVE: App -> Login
-        // Usamos transitionViews para ocultar la App y mostrar el Auth
         transitionViews(appContainer, authContainer, () => {
-            // Limpiamos la App para que no quede basura visual
             resetApplication();
-            glassCard.classList.remove('expanded'); // Asegurar tamaño pequeño
-
-            // Iniciamos el componente de Auth
+            glassCard.classList.remove('expanded');
             new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
         });
     };
 
     authService.observeAuthState((user) => {
-        if (user) showApp(user); else showLogin();
+        if (user) {
+            const isJustCreated = user.metadata.creationTime === user.metadata.lastSignInTime;
+            const noName = !user.displayName;
+
+            if (isJustCreated && noName) {
+                console.log("⏳ Esperando actualización de nombre para usuario nuevo...");
+                return; // NO mostramos la app todavía
+            }
+            // -------------------------
+
+            showApp(user);
+        } else {
+            showLogin();
+        }
     });
 
     // --- LOGICA UPLOAD ---
@@ -222,7 +230,17 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSongData = { ...data, format: fmt };
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
-        } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
+        } catch (e) {
+            console.error(e);
+            stopProgressTimer();
+            Swal.fire({
+                icon: 'error',
+                title: '¡Ups!',
+                text: e.message || 'Ocurrió un error al procesar el archivo.',
+                confirmButtonText: 'Entendido'
+            });
+            resetUI();
+        }
     }
 
     async function handleYoutube(url) {
@@ -240,12 +258,21 @@ document.addEventListener('DOMContentLoaded', () => {
             currentSongData = { ...data, format: formatSelect.value };
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
-        } catch (e) { console.error(e); stopProgressTimer(); alert(e.message); resetUI(); }
+        } catch (e) {
+            console.error(e);
+            stopProgressTimer();
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de YouTube',
+                text: e.message || 'No se pudo procesar el video.',
+                confirmButtonText: 'Cerrar'
+            });
+            resetUI();
+        }
     }
 
     function showLoader(txt) {
         loaderText.textContent = txt;
-        // TRANSICIÓN SUAVE: Upload UI -> Loader
         transitionViews(uploadUi, loader);
     }
 
@@ -268,7 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bpmBadge = bpm > 0 ? `<div class="badges-container"><span class="badge-info">BPM ${bpm}</span><span class="badge-info">KEY ${key}</span></div>` : '';
 
-        // Construimos el HTML, pero AÚN NO SE VE
         resultsArea.innerHTML = `
             <div class="player-header">
                 <div class="player-top-row">
@@ -304,25 +330,49 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="tracks-wrapper"></div>
         `;
 
-        // --- TRANSICIÓN SUAVE: Loader -> Reproductor ---
-        // 1. Oculta Loader (Fade Out)
-        // 2. Expande tarjeta y Oculta Header (Structural)
-        // 3. Muestra Reproductor (Fade In)
         transitionViews(loader, resultsArea, () => {
             appHeaderElement.classList.add('hidden');
             uploadUi.classList.add('hidden');
             glassCard.classList.add('expanded');
         });
 
-        // Configuración de Listeners y Tracks
-        setTimeout(() => { // Pequeño delay para asegurar que el DOM esté listo
+        setTimeout(() => {
             document.getElementById('btnReset').onclick = resetApplication;
 
+            // Lógica Guardar con SweetAlert (Toast)
             if (document.getElementById('btnSaveToCloud')) {
                 document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
-                    const b = e.currentTarget; b.disabled = true; b.innerHTML = '...';
-                    try { await dbService.saveSong(currentUser.uid, currentSongData); alert("¡Guardada!"); b.remove(); }
-                    catch (e) { alert(e.message); b.disabled = false; b.innerHTML = 'Guardar'; }
+                    const b = e.currentTarget;
+                    const originalText = b.innerHTML;
+                    b.disabled = true;
+                    // Usamos 'sync' o 'refresh' con la clase simple .icon-spin
+                    b.innerHTML = '<span class="material-icons icon-spin">sync</span> Guardando...';
+
+                    try {
+                        await dbService.saveSong(currentUser.uid, currentSongData);
+
+                        // ALERTA EXITOSA (Toast)
+                        const Toast = Swal.mixin({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 3000,
+                            timerProgressBar: true,
+                            background: '#1a1a1a',
+                            color: '#fff',
+                            didOpen: (toast) => {
+                                toast.addEventListener('mouseenter', Swal.stopTimer)
+                                toast.addEventListener('mouseleave', Swal.resumeTimer)
+                            }
+                        });
+                        Toast.fire({ icon: 'success', title: '¡Canción guardada en la nube!' });
+                        b.remove();
+                    }
+                    catch (e) {
+                        Swal.fire({ icon: 'error', title: 'Error al guardar', text: e.message, confirmButtonText: 'Intentar de nuevo' });
+                        b.disabled = false;
+                        b.innerHTML = originalText;
+                    }
                 });
             }
 
@@ -413,13 +463,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
 
-        // --- TRANSICIÓN SUAVE DE REGRESO: Reproductor -> Inicio ---
         transitionViews(resultsArea, uploadUi, () => {
-            // Acciones estructurales
-            appHeaderElement.classList.remove('hidden'); // Vuelve título
-            glassCard.classList.remove('expanded'); // Se encoge tarjeta suavemente
+            appHeaderElement.classList.remove('hidden');
+            glassCard.classList.remove('expanded');
 
-            // Limpieza lógica
             tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); });
             tracks = [];
             resultsArea.innerHTML = '';

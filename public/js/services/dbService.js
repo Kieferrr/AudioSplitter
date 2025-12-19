@@ -1,6 +1,13 @@
 import { db } from '../config/firebase-config.js';
 import {
-    collection, addDoc, query, getDocs, orderBy, serverTimestamp, deleteDoc, doc
+    collection, 
+    addDoc, 
+    query, 
+    getDocs, 
+    orderBy, 
+    serverTimestamp, 
+    deleteDoc, 
+    doc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 export const dbService = {
@@ -74,7 +81,6 @@ export const dbService = {
                 const decodedUrl = decodeURIComponent(anyUrl);
 
                 // B. Buscamos el marcador clave "saved_songs/"
-                // La URL típica es: .../bucket/saved_songs/USER/CARPETA/archivo.mp3
                 const marker = "saved_songs/";
                 const parts = decodedUrl.split(marker);
 
@@ -83,7 +89,6 @@ export const dbService = {
                     const pathWithFile = parts[1];
 
                     // Quitamos el nombre del archivo para dejar solo la carpeta
-                    // Buscamos el último slash "/"
                     const lastSlashIndex = pathWithFile.lastIndexOf('/');
 
                     if (lastSlashIndex !== -1) {
@@ -100,7 +105,6 @@ export const dbService = {
                         });
 
                         // D. FRENO DE EMERGENCIA 🚨
-                        // Si el servidor dice "Error 400/500", lanzamos error y NO borramos de la DB
                         if (!response.ok) {
                             const errData = await response.json();
                             throw new Error(errData.error || "Error al borrar archivos de la nube");
@@ -119,8 +123,34 @@ export const dbService = {
 
         } catch (error) {
             console.error("❌ Error en proceso de borrado:", error);
-            // Re-lanzamos el error para que el usuario vea la alerta
+            throw error;
+        }
+    },
+
+    // --- BORRADO TOTAL DE CUENTA ---
+    // Esta función faltaba cerrar bien en tu versión anterior
+    async deleteUserAccountData(userId) {
+        try {
+            console.log("⚠️ Iniciando borrado total de datos para usuario:", userId);
+            
+            // 1. Obtener todas las canciones del historial
+            const songs = await this.getUserSongs(userId);
+            
+            if (songs.length > 0) {
+                console.log(`🗑️ Borrando ${songs.length} canciones...`);
+                // 2. Borrar cada canción una por una (esto limpia Storage y Firestore de canciones)
+                const deletePromises = songs.map(song => this.deleteSong(userId, song.id, song));
+                await Promise.all(deletePromises);
+            }
+
+            // 3. Borrar el documento principal del usuario en 'users'
+            await deleteDoc(doc(db, "users", userId));
+            
+            console.log("✅ Datos de usuario eliminados correctamente.");
+        } catch (error) {
+            console.error("❌ Error borrando datos de usuario:", error);
             throw error;
         }
     }
+
 };
