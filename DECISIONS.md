@@ -1,6 +1,6 @@
 # Registro de Decisiones de Arquitectura
 
-## 001. Eliminación de descarga de YouTube (2024-05-20)
+## 001. Eliminación de descarga de YouTube (2025-12-21)
 
 **Estado:** Aceptado
 
