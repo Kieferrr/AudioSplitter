@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadUi = document.getElementById('upload-ui');
     const resultsArea = document.getElementById('results-area');
 
-    // --- VARIABLES GLOBALES DEL REPRODUCTOR ---
+    // --- VARIABLES GLOBALES ---
     let tracks = [];
     let isPlaying = false;
     let globalDuration = 0;
@@ -28,22 +28,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let globalMasterVolume = 1.0;
     let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
 
-    // --- FUNCIÓN AUXILIAR PARA TRANSICIONES SUAVES ---
+    // --- TRANSICIONES ---
     const transitionViews = (oldElem, newElem, onComplete = () => { }) => {
         if (oldElem && !oldElem.classList.contains('hidden')) {
-            // 1. Animación de salida
             oldElem.classList.add('fade-out');
             oldElem.classList.remove('fade-in');
-
             setTimeout(() => {
-                // 2. Ocultar real y limpiar clases
                 oldElem.classList.add('hidden');
                 oldElem.classList.remove('fade-out');
-
-                // 3. Ejecutar cambios estructurales
                 onComplete();
-
-                // 4. Animación de entrada
                 if (newElem) {
                     newElem.classList.remove('hidden');
                     newElem.classList.add('fade-in');
@@ -59,22 +52,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- PANEL USUARIO (CORREGIDO Y COMPACTO) ---
-    const updateHeaderWithUser = (user) => {
+    // --- HEADER USUARIO (CON ANIMACIÓN "POP" Y CENTRADO CORRECTO) ---
+    const updateHeaderWithUser = async (user) => {
         const existingPanel = document.getElementById('user-panel');
         if (existingPanel) existingPanel.remove();
 
         const userPanel = document.createElement('div');
         userPanel.id = 'user-panel';
-
-        // Forzamos estilo en línea para asegurar que no se rompa la fila
         userPanel.style.display = 'flex';
         userPanel.style.alignItems = 'center';
         userPanel.style.whiteSpace = 'nowrap';
 
+        // --- ESTADO INICIAL DE LA ANIMACIÓN ---
+        // IMPORTANTE: Mantenemos translateX(-50%) para que siga centrado
+        userPanel.style.opacity = '0';
+        userPanel.style.transform = 'translateX(-50%) scale(0.9)';
+
+        // Transición suave
+        userPanel.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+
         if (user) {
-            // --- CASO 1: USUARIO LOGUEADO (Normal) ---
-            const displayName = user.displayName || "Usuario";
+            let finalDisplayName = user.displayName || "Usuario";
+
+            try {
+                const dbData = await authService.getUserData(user.uid);
+                if (dbData && (dbData.username || dbData.displayName)) {
+                    finalDisplayName = dbData.username || dbData.displayName;
+                }
+            } catch (e) {
+                console.warn("No se pudo obtener datos extra del usuario", e);
+            }
 
             userPanel.innerHTML = `
             <button id="btnLibrary" class="header-btn">
@@ -82,24 +89,23 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>
             <div class="v-divider"></div>
             
-            <span class="user-email">${displayName}</span>
+            <span class="user-email">${finalDisplayName}</span>
             
             <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
                 <span class="material-icons">settings</span>
             </button>
-
             <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 5px;">
                 <span class="material-icons">logout</span>
             </button>
-        `;
+            `;
+
             glassCard.appendChild(userPanel);
 
-            // Listeners Usuario
+            // Listeners
             document.getElementById('btnLogout').addEventListener('click', async () => {
                 await authService.logout();
                 showLogin();
             });
-
             document.getElementById('btnLibrary').addEventListener('click', () => {
                 new LibraryModal(user.uid, (songData) => {
                     resetApplication();
@@ -109,36 +115,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     }, 350);
                 });
             });
-
             document.getElementById('btnSettings').addEventListener('click', () => {
                 new SettingsModal(user, () => showLogin());
             });
 
         } else {
-            // --- CASO 2: INVITADO (CORREGIDO: UNA SOLA LÍNEA) ---
-
-            // 1. Reducimos el gap (espacio) visualmente solo para este modo
+            // Invitado
             userPanel.style.gap = '10px';
-
             userPanel.innerHTML = `
                 <span class="user-email" style="color: #aaa; font-size: 0.8rem;">Invitado</span>
-                
                 <button id="btnLoginGuestBack" class="btn-login-guest" style="padding: 4px 12px; font-size: 0.75rem;">
                     Iniciar Sesión
                 </button>
             `;
             glassCard.appendChild(userPanel);
-
-            // Listener para volver al Login
-            document.getElementById('btnLoginGuestBack').addEventListener('click', () => {
-                showLogin();
-            });
+            document.getElementById('btnLoginGuestBack').addEventListener('click', () => showLogin());
         }
+
+        // --- ESTADO FINAL (DISPARAR ANIMACIÓN) ---
+        // Volvemos a escala 1 pero MANTENIENDO el centrado translateX(-50%)
+        setTimeout(() => {
+            userPanel.style.opacity = '1';
+            userPanel.style.transform = 'translateX(-50%) scale(1)';
+        }, 50);
     };
 
     const showApp = (user) => {
+        if (!appContainer.classList.contains('hidden') && currentUser?.uid === user.uid) {
+            return;
+        }
+
         currentUser = user;
         updateHeaderWithUser(user);
+
+        if (!appContainer.classList.contains('hidden')) return;
+
         transitionViews(authContainer, appContainer, () => {
             authContainer.innerHTML = '';
         });
@@ -155,22 +166,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // --- OBSERVER ---
     authService.observeAuthState((user) => {
-        if (user) {
-            const isJustCreated = user.metadata.creationTime === user.metadata.lastSignInTime;
-            const noName = !user.displayName;
-
-            if (isJustCreated && noName) {
-                console.log("⏳ Esperando actualización de nombre para usuario nuevo...");
-                return;
-            }
-            showApp(user);
-        } else {
-            showLogin();
-        }
+        if (user) showApp(user);
+        else showLogin();
     });
 
-    // --- LOGICA UPLOAD (SOLO ARCHIVOS LOCALES) ---
+    // --- UPLOAD ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('fileInput');
     const formatSelect = document.getElementById('formatSelect');
@@ -178,67 +180,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const loaderText = document.getElementById('loader-text');
     const progressBarContainer = document.querySelector('.progress-bar-container');
     const progressBar = document.getElementById('progress-bar');
-
     let timerText = document.getElementById('timer-text');
     if (!timerText) {
         timerText = document.createElement('p'); timerText.id = 'timer-text'; timerText.className = 'timer-text';
         progressBarContainer.after(timerText);
     }
 
-    // Eventos de Drag & Drop y Click
     dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleUpload(e.target.files[0]); });
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length) handleUpload(e.target.files[0]);
-    });
+    ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.add('drag-active'); }));
+    ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.remove('drag-active'); }));
+    dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]); });
 
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.classList.add('drag-active');
-        }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropZone.classList.remove('drag-active');
-        }, false);
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-        if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]);
-    });
-
-    // Helpers de tiempo
-    function estimateProcessingTime(duration, format) { return (duration * 0.9) + (format === 'wav' ? 60 : 30); }
-
+    function estimateProcessingTime(dur, fmt) { return (dur * 0.9) + (fmt === 'wav' ? 60 : 30); }
     function getAudioDuration(file) {
-        return new Promise(resolve => {
-            const url = URL.createObjectURL(file);
-            const a = new Audio(url);
-            a.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(a.duration); };
-            a.onerror = () => resolve(180); // Default 3 min si falla lectura
+        return new Promise(r => {
+            const u = URL.createObjectURL(file), a = new Audio(u);
+            a.onloadedmetadata = () => { URL.revokeObjectURL(u); r(a.duration); };
+            a.onerror = () => r(180);
         });
     }
 
     function startProgressTimer(seconds) {
-        progressBarContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.classList.remove('indeterminate');
-
+        progressBarContainer.style.display = 'block'; progressBar.style.width = '0%'; progressBar.classList.remove('indeterminate');
         const start = Date.now();
         if (visualTimerInterval) clearInterval(visualTimerInterval);
-
         visualTimerInterval = setInterval(() => {
             const elapsed = (Date.now() - start) / 1000;
             let pct = (elapsed / seconds) * 100; if (pct > 95) pct = 95;
-
             progressBar.style.width = `${pct}%`;
             const left = Math.max(0, seconds - elapsed);
-
             if (left > 0) {
                 const m = Math.floor(left / 60), s = Math.floor(left % 60);
                 timerText.textContent = `Tiempo estimado: ${m}:${s.toString().padStart(2, '0')}`;
@@ -248,95 +220,52 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 100);
     }
-
     function stopProgressTimer() {
         if (visualTimerInterval) clearInterval(visualTimerInterval);
-        progressBar.classList.remove('indeterminate');
-        progressBar.style.width = '100%';
-        timerText.textContent = "¡Listo!";
+        progressBar.classList.remove('indeterminate'); progressBar.style.width = '100%'; timerText.textContent = "¡Listo!";
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
-    // --- PROCESAMIENTO PRINCIPAL ---
     async function handleUpload(file) {
         showLoader("Analizando archivo...");
-
-        // Obtenemos duración para calcular barra de progreso
-        const dur = await getAudioDuration(file);
-        const fmt = formatSelect.value;
-
+        const dur = await getAudioDuration(file), fmt = formatSelect.value;
         loaderText.textContent = `Procesando: ${file.name}`;
         startProgressTimer(estimateProcessingTime(dur, fmt));
-
-        const fd = new FormData();
-        fd.append('audioFile', file);
-        fd.append('format', fmt);
+        const fd = new FormData(); fd.append('audioFile', file); fd.append('format', fmt);
 
         try {
             const res = await fetch('/api/upload', { method: 'POST', body: fd });
-            if (!res.ok) throw new Error('Error en el servidor');
-
+            if (!res.ok) throw new Error('Error servidor');
             const data = await res.json();
             currentSongData = { ...data, format: fmt };
-
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
-
         } catch (e) {
-            console.error(e);
-            stopProgressTimer();
-            Swal.fire({
-                icon: 'error',
-                title: '¡Ups!',
-                text: e.message || 'Ocurrió un error al procesar el archivo.',
-                confirmButtonText: 'Entendido'
-            });
+            console.error(e); stopProgressTimer();
+            Swal.fire({ icon: 'error', title: 'Error', text: e.message });
             resetUI();
         }
     }
 
-    function showLoader(txt) {
-        loaderText.textContent = txt;
-        transitionViews(uploadUi, loader);
-    }
+    function showLoader(txt) { loaderText.textContent = txt; transitionViews(uploadUi, loader); }
+    function resetUI() { loader.classList.add('hidden'); progressBarContainer.style.display = 'none'; uploadUi.classList.remove('hidden'); fileInput.value = ''; }
 
-    function resetUI() {
-        loader.classList.add('hidden');
-        progressBarContainer.style.display = 'none';
-        uploadUi.classList.remove('hidden');
-        fileInput.value = '';
-    }
-
-    // --- REPRODUCTOR (DAW) ---
     function initDAW(files, name, zip, inst, bpm, key, isSaved = false) {
         const safeName = name ? name.replace(/\.[^/.]+$/, "") : "Mix";
-
-        // Botón Guardar
-        const saveBtnHTML = (currentUser && !isSaved) ? `
-            <button id="btnSaveToCloud" class="action-btn">
-                <span class="material-icons">cloud_upload</span> Guardar
-            </button>` : '';
-
+        const saveBtnHTML = (currentUser && !isSaved) ? `<button id="btnSaveToCloud" class="action-btn"><span class="material-icons">cloud_upload</span> Guardar</button>` : '';
         const bpmBadge = bpm > 0 ? `<div class="badges-container"><span class="badge-info">BPM ${bpm}</span><span class="badge-info">KEY ${key}</span></div>` : '';
 
         resultsArea.innerHTML = `
             <div class="player-header">
                 <div class="player-top-row">
-                    <div class="player-title-container">
-                         <div class="player-title-mask">
-                             <span class="player-title-text">${safeName}</span>
-                         </div>
-                         ${bpmBadge}
-                    </div>
-
+                    <div class="player-title-container"><div class="player-title-mask"><span class="player-title-text">${safeName}</span></div>${bpmBadge}</div>
                     <div class="actions-right">
                         ${saveBtnHTML}
                         ${inst ? `<a href="${inst}" download class="action-btn"><span class="material-icons">download</span> Instrumental</a>` : ''}
                         ${zip ? `<a href="${zip}" download class="action-btn"><span class="material-icons">download</span> ZIP</a>` : ''}
-                        <button id="btnReset" class="action-btn black-btn"><span class="material-icons">add</span> Nuevo proyecto</button>
+                        <button id="btnReset" class="action-btn black-btn"><span class="material-icons">add</span> Nuevo</button>
                     </div>
                 </div>
-                
                 <div class="controls-row">
                     <div class="main-controls">
                         <button id="btnPlayPause" class="ctrl-circle play"><span class="material-icons" style="font-size:30px;">play_arrow</span></button>
@@ -347,96 +276,53 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="1">
                     </div>
                 </div>
-                
                 <div class="time-display"><span id="currentTime">00:00</span> / <span id="totalTime">00:00</span></div>
             </div>
-            
             <div id="tracks-wrapper"></div>
         `;
 
         transitionViews(loader, resultsArea, () => {
-            appHeaderElement.classList.add('hidden');
-            uploadUi.classList.add('hidden');
-            glassCard.classList.add('expanded');
+            appHeaderElement.classList.add('hidden'); uploadUi.classList.add('hidden'); glassCard.classList.add('expanded');
         });
 
         setTimeout(() => {
             document.getElementById('btnReset').onclick = resetApplication;
-
-            // Lógica Guardar con SweetAlert (Toast)
             if (document.getElementById('btnSaveToCloud')) {
                 document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
-                    const b = e.currentTarget;
-                    const originalText = b.innerHTML;
-                    b.disabled = true;
-                    b.innerHTML = '<span class="material-icons icon-spin">sync</span> Guardando...';
-
+                    const b = e.currentTarget, orig = b.innerHTML;
+                    b.disabled = true; b.innerHTML = '<span class="material-icons icon-spin">sync</span> ...';
                     try {
                         await dbService.saveSong(currentUser.uid, currentSongData);
-
-                        const Toast = Swal.mixin({
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 3000,
-                            timerProgressBar: true,
-                            background: '#1a1a1a',
-                            color: '#fff',
-                            didOpen: (toast) => {
-                                toast.addEventListener('mouseenter', Swal.stopTimer)
-                                toast.addEventListener('mouseleave', Swal.resumeTimer)
-                            }
-                        });
-                        Toast.fire({ icon: 'success', title: '¡Canción guardada en la nube!' });
+                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Guardado', showConfirmButton: false, timer: 2000, background: '#1a1a1a', color: '#fff' });
                         b.remove();
-                    }
-                    catch (e) {
-                        Swal.fire({ icon: 'error', title: 'Error al guardar', text: e.message, confirmButtonText: 'Intentar de nuevo' });
-                        b.disabled = false;
-                        b.innerHTML = originalText;
+                    } catch (e) {
+                        Swal.fire({ icon: 'error', text: e.message }); b.disabled = false; b.innerHTML = orig;
                     }
                 });
             }
 
-            btnPlayPause = document.getElementById('btnPlayPause');
-            btnStop = document.getElementById('btnStop');
-            currentTimeSpan = document.getElementById('currentTime');
-            totalTimeSpan = document.getElementById('totalTime');
+            btnPlayPause = document.getElementById('btnPlayPause'); btnStop = document.getElementById('btnStop');
+            currentTimeSpan = document.getElementById('currentTime'); totalTimeSpan = document.getElementById('totalTime');
             const mVol = document.getElementById('masterVolume');
-
-            mVol.value = globalMasterVolume;
-            mVol.oninput = (e) => {
-                globalMasterVolume = parseFloat(e.target.value);
-                tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
-            };
+            mVol.value = globalMasterVolume; mVol.oninput = (e) => { globalMasterVolume = parseFloat(e.target.value); tracks.forEach(t => t.setMasterVolume(globalMasterVolume)); };
 
             const tWrapper = document.getElementById('tracks-wrapper');
-            const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
             tracks = [];
-
+            const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
             files.forEach(url => {
-                const lowerUrl = url.toLowerCase();
                 let stem = 'other';
-                if (lowerUrl.includes('vocals')) stem = 'vocals';
-                else if (lowerUrl.includes('drums')) stem = 'drums';
-                else if (lowerUrl.includes('bass')) stem = 'bass';
-                else if (lowerUrl.includes('other')) stem = 'other';
-                const color = colors[stem] || '#7C4DFF';
-                tracks.push(new TrackComponent(tWrapper, stem, url, color));
+                if (url.includes('vocals')) stem = 'vocals'; else if (url.includes('drums')) stem = 'drums'; else if (url.includes('bass')) stem = 'bass';
+                tracks.push(new TrackComponent(tWrapper, stem, url, colors[stem] || '#7C4DFF'));
             });
 
             const checkInt = setInterval(() => {
                 if (tracks[0] && tracks[0].isReady()) {
-                    globalDuration = tracks[0].wavesurfer.getDuration();
-                    totalTimeSpan.textContent = formatTime(globalDuration);
-                    clearInterval(checkInt);
+                    globalDuration = tracks[0].wavesurfer.getDuration(); totalTimeSpan.textContent = formatTime(globalDuration); clearInterval(checkInt);
                 }
             }, 500);
 
-            if (typeof Sortable !== 'undefined') {
-                if (sortableInstance) sortableInstance.destroy();
-                try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
-            }
+            if (typeof Sortable !== 'undefined' && sortableInstance) sortableInstance.destroy();
+            if (typeof Sortable !== 'undefined') try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
 
             assignPlayerListeners(tWrapper);
         }, 50);
@@ -450,51 +336,33 @@ document.addEventListener('DOMContentLoaded', () => {
         btnStop.onclick = () => { tracks.forEach(t => t.stop()); isPlaying = false; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>'; clearInterval(progressInterval); currentTimeSpan.textContent = "00:00"; };
         c.addEventListener('track-solo', (e) => {
             const req = tracks.find(t => t.name === e.detail.name);
-            if (req.isSolo) tracks.forEach(t => { if (t.name !== req.name) t.disableSolo(); });
-            refreshMuteState();
+            if (req.isSolo) tracks.forEach(t => { if (t.name !== req.name) t.disableSolo(); }); refreshMuteState();
         });
         c.addEventListener('track-mute', refreshMuteState);
-        c.addEventListener('track-seek', (e) => {
-            tracks.forEach(t => { if (t.name !== e.detail.sourceTrack) t.seekTo(e.detail.progress); });
-            currentTimeSpan.textContent = formatTime(globalDuration * e.detail.progress);
-        });
+        c.addEventListener('track-seek', (e) => { tracks.forEach(t => { if (t.name !== e.detail.sourceTrack) t.seekTo(e.detail.progress); }); currentTimeSpan.textContent = formatTime(globalDuration * e.detail.progress); });
     }
 
     function refreshMuteState() {
         const anySolo = tracks.some(t => t.isSolo);
-        tracks.forEach(t => {
-            let silent = false;
-            if (anySolo) { if (!t.isSolo) silent = true; }
-            else { if (t.isMuted) silent = true; }
-            t.setSilent(silent);
-        });
+        tracks.forEach(t => { let silent = false; if (anySolo) { if (!t.isSolo) silent = true; } else { if (t.isMuted) silent = true; } t.setSilent(silent); });
     }
 
     function startTimer() {
         if (progressInterval) clearInterval(progressInterval);
         progressInterval = setInterval(() => {
             if (!tracks.length) return;
-            const cur = tracks[0].wavesurfer.getCurrentTime();
-            currentTimeSpan.textContent = formatTime(cur);
+            const cur = tracks[0].wavesurfer.getCurrentTime(); currentTimeSpan.textContent = formatTime(cur);
             if (globalDuration > 0 && cur >= globalDuration) btnStop.click();
         }, 100);
     }
-
     function formatTime(s) { if (!s) return "00:00"; const m = Math.floor(s / 60), sc = Math.floor(s % 60); return `${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}`; }
 
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
-
         transitionViews(resultsArea, uploadUi, () => {
-            appHeaderElement.classList.remove('hidden');
-            glassCard.classList.remove('expanded');
-
-            tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); });
-            tracks = [];
-            resultsArea.innerHTML = '';
-
-            resetUI();
-            currentSongData = null;
+            appHeaderElement.classList.remove('hidden'); glassCard.classList.remove('expanded');
+            tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); }); tracks = []; resultsArea.innerHTML = '';
+            resetUI(); currentSongData = null;
         });
     }
 });

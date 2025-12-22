@@ -7,11 +7,14 @@ import {
     updateProfile,
     sendEmailVerification,
     sendPasswordResetEmail,
-    deleteUser // <--- IMPORTANTE: Necesario para borrar la cuenta
+    deleteUser,
+    GoogleAuthProvider,
+    signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import {
     doc,
     setDoc,
+    getDoc,
     serverTimestamp,
     collection,
     query,
@@ -24,28 +27,20 @@ export const authService = {
     // --- REGISTRO ---
     async register(email, password, username) {
         try {
-            // 1. Verificar si el username ya existe
             const q = query(collection(db, "users"), where("username", "==", username));
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty) {
                 throw { code: 'custom/username-taken' };
             }
 
-            // 2. Crear usuario
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             let user = userCredential.user;
 
-            // 3. Poner nombre
             await updateProfile(user, { displayName: username });
-
-            // 4. Recargar para asegurar que el nombre esté listo
             await user.reload();
             user = auth.currentUser;
 
-            // 5. Guardar en BD
             await this.saveUserToDB(user, username);
-
-            // 6. ENVIAR CORREO DE VERIFICACIÓN (Silencioso)
             sendEmailVerification(user).catch(err => console.error("Error enviando verificación:", err));
 
             return user;
@@ -55,12 +50,10 @@ export const authService = {
         }
     },
 
-    // --- LOGIN ---
+    // --- LOGIN CON CORREO ---
     async login(loginInput, password) {
         try {
             let emailToUse = loginInput;
-
-            // Detectar si es Username
             const isEmail = String(loginInput).toLowerCase().match(
                 /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
             );
@@ -68,89 +61,101 @@ export const authService = {
             if (!isEmail) {
                 const q = query(collection(db, "users"), where("username", "==", loginInput));
                 const querySnapshot = await getDocs(q);
-
                 if (querySnapshot.empty) throw { code: 'auth/user-not-found' };
-
                 const userDoc = querySnapshot.docs[0].data();
                 emailToUse = userDoc.email;
             }
 
             const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
             return userCredential.user;
-
         } catch (error) {
             console.error("Error en login:", error);
             throw this.mapAuthError(error);
         }
     },
 
-    // --- RECUPERAR CONTRASEÑA ---
-    async sendPasswordReset(email) {
+    // --- LOGIN CON GOOGLE ---
+    async loginWithGoogle() {
         try {
-            await sendPasswordResetEmail(auth, email);
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+
+            // Sincronización silenciosa (la UI se encargará de mostrar el nombre correcto)
+            const userRef = doc(db, "users", user.uid);
+            const userSnap = await getDoc(userRef);
+
+            if (userSnap.exists()) {
+                const data = userSnap.data();
+                const dbName = data.username || data.displayName;
+
+                if (dbName && dbName !== user.displayName) {
+                    await updateProfile(user, { displayName: dbName });
+                }
+                await this.saveUserToDB(user, null);
+            } else {
+                await this.saveUserToDB(user, user.displayName);
+            }
+
+            return auth.currentUser;
         } catch (error) {
-            console.error("Error reset pass:", error);
+            console.error("Error Google Login:", error);
+            if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') return null;
             throw this.mapAuthError(error);
         }
     },
 
-    // --- LOGOUT ---
+    // --- OBTENER DATOS REALES DE BD (NUEVO) ---
+    async getUserData(uid) {
+        try {
+            const userRef = doc(db, "users", uid);
+            const snap = await getDoc(userRef);
+            if (snap.exists()) return snap.data();
+            return null;
+        } catch (error) {
+            console.error("Error obteniendo datos usuario:", error);
+            return null;
+        }
+    },
+
+    // --- UTILS ---
+    async sendPasswordReset(email) {
+        try { await sendPasswordResetEmail(auth, email); }
+        catch (error) { throw this.mapAuthError(error); }
+    },
+
     async logout() {
-        try {
-            await signOut(auth);
-        } catch (error) {
-            console.error("Error cerrando sesión:", error);
-        }
+        try { await signOut(auth); }
+        catch (error) { console.error("Error logout:", error); }
     },
 
-    // --- BORRAR CUENTA (NUEVO) ---
     async deleteAccount() {
-        try {
-            const user = auth.currentUser;
-            if (user) {
-                await deleteUser(user);
-            }
-        } catch (error) {
-            console.error("Error borrando cuenta Auth:", error);
-            throw error;
-        }
+        try { const user = auth.currentUser; if (user) await deleteUser(user); }
+        catch (error) { throw error; }
     },
 
-    // --- GUARDAR USUARIO ---
     async saveUserToDB(user, username = null) {
         try {
             const userRef = doc(db, "users", user.uid);
-            const userData = {
-                email: user.email,
-                lastLogin: serverTimestamp(),
-                uid: user.uid
-            };
-            if (username) {
-                userData.username = username;
-                userData.displayName = username;
-            }
+            const userData = { email: user.email, lastLogin: serverTimestamp(), uid: user.uid };
+            if (username) { userData.displayName = username; userData.username = username; }
             await setDoc(userRef, userData, { merge: true });
-        } catch (error) {
-            console.error("Error guardando usuario en DB:", error);
-        }
+        } catch (error) { console.error("Error DB save:", error); }
     },
 
-    // --- OBSERVADOR ---
     observeAuthState(callback) {
-        onAuthStateChanged(auth, (user) => {
-            callback(user);
-        });
+        onAuthStateChanged(auth, (user) => callback(user));
     },
 
-    // --- ERRORES ---
     mapAuthError(error) {
         const code = error.code || '';
         if (code === 'auth/email-already-in-use') return 'Este correo ya está registrado.';
         if (code === 'auth/invalid-email') return 'El correo no es válido.';
-        if (code === 'auth/weak-password') return 'La contraseña es muy débil (mínimo 6 caracteres).';
-        if (code === 'auth/user-not-found' || code === 'auth/invalid-login-credentials' || code === 'auth/invalid-credential') return 'Usuario o contraseña incorrectos.';
-        if (code === 'auth/wrong-password') return 'Usuario o contraseña incorrectos.';
-        if (code === 'custom/username-taken') return 'Este nombre de usuario ya está ocupado.';
-        return 'Ocurrió un error inesperado. Intenta de nuevo.';
+        if (code === 'auth/weak-password') return 'Contraseña débil.';
+        if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') return 'Credenciales incorrectas.';
+        if (code === 'custom/username-taken') return 'Usuario ya existe.';
+        return 'Error inesperado.';
     }
 };

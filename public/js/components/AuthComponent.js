@@ -88,6 +88,14 @@ export class AuthComponent {
                     </button>
                 </form>
 
+                <div style="margin-top: 15px;">
+                    <div class="divider"><span>O continúa con</span></div>
+                    <button id="btn-google" type="button" class="btn-google">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G">
+                        Google
+                    </button>
+                </div>
+
                 <div class="auth-toggle" id="btn-toggle-mode">
                     ${toggleText}
                 </div>
@@ -106,13 +114,50 @@ export class AuthComponent {
         const guestBtn = this.container.querySelector('#btn-guest');
         const submitBtn = this.container.querySelector('#btn-submit');
         const forgotBtn = this.container.querySelector('#btn-forgot-pass');
+        const googleBtn = this.container.querySelector('#btn-google');
+
+        // --- LISTENER GOOGLE (BLINDADO CONTRA ERRORES) ---
+        if (googleBtn) {
+            googleBtn.addEventListener('click', async () => {
+                // 1. Evitar doble clic
+                if (googleBtn.disabled) return;
+
+                // 2. Deshabilitar visualmente
+                googleBtn.disabled = true;
+                googleBtn.style.opacity = '0.5';
+                googleBtn.style.cursor = 'wait';
+
+                try {
+                    const user = await authService.loginWithGoogle();
+                    this.onLoginSuccess(user);
+                } catch (error) {
+                    console.error("Error Auth Google:", error);
+
+                    // 3. Manejo de errores específicos
+                    if (error.code === 'auth/cancelled-popup-request') {
+                        // Ignoramos conflicto de popups múltiples
+                        return;
+                    }
+                    if (error.code === 'auth/popup-closed-by-user') {
+                        this.showError("Has cancelado el inicio de sesión.");
+                    } else {
+                        const msg = typeof error === 'string' ? error : "No se pudo iniciar con Google.";
+                        this.showError(msg);
+                    }
+                } finally {
+                    // 4. Reactivar botón siempre
+                    googleBtn.disabled = false;
+                    googleBtn.style.opacity = '1';
+                    googleBtn.style.cursor = 'pointer';
+                }
+            });
+        }
 
         // LÓGICA OLVIDÉ CONTRASEÑA
         if (forgotBtn) {
             forgotBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
 
-                // Usamos SweetAlert para pedir el correo
                 const { value: email } = await Swal.fire({
                     title: 'Recuperar contraseña',
                     input: 'email',
@@ -151,6 +196,7 @@ export class AuthComponent {
             });
         }
 
+        // LÓGICA LOGIN / REGISTRO NORMAL
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             this.container.querySelector('#auth-error-msg').classList.add('hidden');

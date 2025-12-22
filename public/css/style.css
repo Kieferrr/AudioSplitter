@@ -1013,3 +1013,37 @@ div:where(.swal2-container) {
     animation: spin 1s linear infinite;
     font-size: 1.2rem;
 }
+
+/* --- BOTÓN GOOGLE --- */
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    background: white;
+    color: #333;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 10px;
+}
+
+.btn-google img {
+    width: 20px;
+    height: 20px;
+}
+
+.btn-google:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+}
+
+.btn-google:active {
+    transform: translateY(0);
+    filter: brightness(0.95);
+}
