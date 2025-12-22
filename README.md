@@ -1,100 +1,84 @@
-# 🎵 AudioSplitter V2 (Edición Local)
+# 🎵 AudioSplitter AI V3
 
-Este proyecto permite separar las pistas de cualquier canción (Voz, Batería, Bajo, Otros) o video de YouTube utilizando Inteligencia Artificial (**Demucs**).
+> **Separa voces e instrumentos con Inteligencia Artificial directamente desde el navegador.**
 
-Esta versión incluye un **"Modo Híbrido"**, lo que significa que está configurada para funcionar **100% en tu computador**, guardando los archivos en tu disco duro sin necesidad de configurar servidores en la nube.
+[![Status](https://img.shields.io/badge/Status-Online-success)]()
+[![Tech](https://img.shields.io/badge/Stack-Node.js%20%7C%20Python%20%7C%20Demucs-blue)]()
 
----
+## 🔗 Demo en Vivo
+¡No necesitas instalar nada! Puedes usar la aplicación desplegada en Google Cloud aquí:
 
-## 🛠️ 1. Requisitos Previos
-
-Antes de instalar, asegúrate de tener estos programas en tu computadora:
-
-1.  **Git:** [Descargar aquí](https://git-scm.com/downloads)
-2.  **Node.js (Versión LTS):** [Descargar aquí](https://nodejs.org/) (Para el servidor web).
-3.  **Python (3.10 o superior):** [Descargar aquí](https://www.python.org/downloads/) (Para la IA).
-    * **IMPORTANTE:** Al instalar, marca la casilla que dice **"Add Python to PATH"**.
-4.  **FFmpeg:** (Vital para procesar audio).
-    * Si estás en Windows y no lo tienes, [sigue esta guía rápida](https://es.wikihow.com/instalar-FFmpeg-en-Windows).
-    * Básicamente: Descargar, descomprimir y agregar la carpeta `bin` a las Variables de Entorno.
+👉 **[ACCEDER A AUDIOSPLITTER AI](https://audiosplitter-v2-215477168026.us-central1.run.app/)** 👈
 
 ---
 
-## 📥 2. Instalación
+## 📖 Sobre el Proyecto
 
-Abre una terminal (PowerShell o CMD) en la carpeta donde quieras guardar el proyecto y ejecuta estos comandos en orden:
+AudioSplitter es una herramienta web que utiliza modelos de Deep Learning (Spleeter/Demucs) para descomponer cualquier archivo de audio en 4 pistas independientes (Voces, Batería, Bajo, Otros).
 
-### Paso A: Clonar el proyecto
-Esto descargará la versión específica que funciona localmente.
+### Características
+* ☁️ **Cloud Native:** Arquitectura desplegada en Google Cloud Run.
+* 🔒 **Seguridad:** Autenticación gestionada con Firebase Auth.
+* 💾 **Almacenamiento:** Gestión de archivos con Google Cloud Storage.
+* 🧠 **IA:** Procesamiento de audio con Python y PyTorch.
+* 📂 **Drag & Drop:** Interfaz moderna y simple.
+
+---
+
+## 📝 Registro de Decisiones (Changelog)
+
+### [3.0.0] - Refactorización Mayor
+**Cambio Importante:** Se eliminó la funcionalidad de importar directamente desde YouTube.
+* **Motivo:** Google Cloud bloquea activamente las peticiones a YouTube provenientes de IPs de centros de datos ("Data Centers"), lo que hacía la función inestable e insostenible a largo plazo.
+* **Solución:** Se reorientó la aplicación a una arquitectura "File-First" (subida de archivos), mejorando la estabilidad, la velocidad y reduciendo riesgos legales.
+
+---
+
+## 🛠️ Guía de Desarrollo Local
+
+Si eres desarrollador y quieres correr este proyecto en tu propia máquina, sigue estos pasos.
+
+### Requisitos
+* **Node.js** (v18 o superior)
+* **Python** (3.10 o superior)
+* **FFmpeg** instalado y agregado al PATH del sistema.
+
+### 1. Instalación
 
 ```bash
-git clone -b feature/hybrid-mode [https://github.com/Kieferrr/AudioSplitter.git](https://github.com/Kieferrr/AudioSplitter.git)
+# Clonar el repositorio
+git clone [https://github.com/Kieferrr/AudioSplitter.git](https://github.com/Kieferrr/AudioSplitter.git)
 cd AudioSplitter
-```
 
-### Paso B: Instalar dependencias del Servidor
-
-```bash
+# Instalar Backend (Node)
 npm install
-```
 
-### Paso C: Instalar dependencias de la IA
-
-```bash
+# Instalar IA (Python)
 pip install -r requirements.txt
 ```
 
-## ⚙️ 3. Configuración (.env)
+### 2. Configuración de Entorno (.env)
 
-Para que el programa sepa que debe ejecutarse en "Modo Local", debes configurar un archivo de entorno.
+Crea un archivo `.env` en la raíz del proyecto:
 
-1. En la carpeta raíz del proyecto, crea un archivo nuevo llamado .env
-
-2. Ábrelo con el Bloc de Notas.
-
-3. Pega exactamente lo siguiente:
-
-```
+```env
 PORT=8080
-# NOTA: No agregues la variable BUCKET_NAME.
-# Al no estar definida, el sistema activa automáticamente el Modo Local.
+# BUCKET_NAME=  <-- Deja esto vacío o comentado para trabajar en modo local (disco duro)
 ```
 
-## 🚀 4. Cómo usar la App
+> **Nota:** Para que funcione la autenticación, necesitas el archivo `public/js/config/firebase-config.js`. Si no lo tienes, crea un proyecto en Firebase y añade tus credenciales web.
 
-1. En la terminal, dentro de la carpeta del proyecto, ejecuta:
+### 3. Ejecutar
 
 ```bash
 npm run dev
 ```
 
-2. Verás un mensaje confirmando el modo local.
+La aplicación correrá en [http://localhost:8080](http://localhost:8080)
 
-3. Abre tu navegador (se recomienda Chrome) e ingresa a: http://localhost:8080
+## 🏗️ Arquitectura del Proyecto
 
-¡Listo! Sube una canción o pega un link de YouTube. Los archivos separados se guardarán en la carpeta public/outputs de tu proyecto.
-
-Nota: La primera vez que lo uses, puede tardar un poco más mientras descarga los modelos de IA básicos.
-
-## 🏎️ 5. (Opcional) Activar Modo Turbo con GPU
-
-Por defecto, la IA usa tu CPU (Procesador), lo cual tarda entre 3 a 5 minutos por canción. Si tienes una tarjeta gráfica NVIDIA, puedes reducir ese tiempo a 20-30 segundos.
-
-### Pasos para activar la GPU:
-
-1. Abre la terminal en la carpeta del proyecto.
-
-2. Desinstala la versión básica de PyTorch:
-
-```bash
-pip uninstall torch torchvision torchaudio
-```
-(Escribe 'Y' y dale Enter si pide confirmación).
-
-3. Instala la versión con soporte CUDA (Aceleración Gráfica):
-
-```bash
-pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cu121](https://download.pytorch.org/whl/cu121)
-```
-
-4. Vuelve a iniciar el servidor (npm run dev) y disfruta la velocidad.
+* **Frontend:** Vanilla JS + CSS Glassmorphism.
+* **Backend:** Express.js (Node).
+* **Procesamiento:** Python Child Process (spawn) ejecutando scripts de PyTorch.
+* **Infraestructura:** Docker + Google Cloud Run.

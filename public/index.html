@@ -25,6 +25,7 @@
             <li></li>
             <li></li>
             <li></li>
+            <li></li>
         </ul>
     </div>
 
@@ -32,7 +33,7 @@
         <div id="auth-container" class="hidden"></div>
 
         <div id="app-container" class="hidden" style="width: 100%; display: flex; justify-content: center;">
-            <div class="glass-card">
+            <div class="glass-card upload-card">
 
                 <header class="app-header">
                     <h1>AudioSplitter <span class="accent">AI</span></h1>
@@ -40,10 +41,11 @@
                 </header>
 
                 <div id="upload-ui">
+
                     <div class="format-selector-container"
-                        style="margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
-                        <label for="formatSelect"
-                            style="color: #aaa; font-size: 0.9rem; font-weight: 600;">Formato:</label>
+                        style="margin-bottom: 25px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                        <label for="formatSelect" style="color: #ccc; font-size: 0.9rem; font-weight: 500;">Formato de
+                            salida:</label>
                         <select id="formatSelect" class="styled-select">
                             <option value="mp3">MP3 (Rápido)</option>
                             <option value="wav">WAV (Alta Calidad)</option>
@@ -51,21 +53,19 @@
                     </div>
 
                     <div id="drop-zone" class="drop-zone">
-                        <span class="material-icons upload-icon">cloud_upload</span>
-                        <p>Arrastra tu archivo aquí o haz clic para buscar</p>
+                        <span class="material-icons upload-icon"
+                            style="font-size: 4rem; margin-bottom: 15px;">cloud_upload</span>
+                        <p style="font-size: 1.1rem; font-weight: 600;">Sube tu archivo de audio</p>
+                        <p style="font-size: 0.9rem; color: #aaa; margin-top: 5px;">Arrastra aquí o haz clic para buscar
+                        </p>
+
                         <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
                     </div>
 
-                    <div class="divider"><span>O USA YOUTUBE</span></div>
+                    <p style="text-align: center; color: #666; font-size: 0.8rem; margin-top: 20px;">
+                        Soporta MP3, WAV, FLAC, M4A (Máx 15MB)
+                    </p>
 
-                    <div class="youtube-box">
-                        <div class="input-group">
-                            <span class="material-icons">link</span>
-                            <input type="text" id="youtubeInput"
-                                placeholder="Pega el link aquí (Ej: https://youtu.be/...)">
-                        </div>
-                        <button id="youtubeBtn" class="btn-primary">Procesar</button>
-                    </div>
                 </div>
 
                 <div id="loader" class="loader-container hidden">

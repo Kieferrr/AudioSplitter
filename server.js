@@ -2,97 +2,83 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { Storage } from '@google-cloud/storage';
 import apiRoutes from './src/routes/api.js';
 
-// 1. Configuración Inicial (IMPORTANTE: dotenv primero)
+// 1. Configuración Inicial
 dotenv.config();
 
-// Definimos bucketName AQUÍ DIRECTAMENTE para asegurar que dotenv ya cargó
+// Configuración de Google Cloud Storage
 const bucketName = process.env.BUCKET_NAME;
-
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Inicializar Google Storage
-// Usamos try/catch por si falta la llave JSON
+// Inicializar Storage
 let storage, bucket;
 try {
   if (bucketName) {
-    storage = new Storage(); // Busca automáticamente GOOGLE_APPLICATION_CREDENTIALS
+    storage = new Storage();
     bucket = storage.bucket(bucketName);
     console.log(`✅ Google Storage configurado con bucket: ${bucketName}`);
   } else {
-    console.warn("⚠️ No se detectó BUCKET_NAME en .env. Modo local sin guardado en nube.");
+    console.warn("⚠️ MODO LOCAL: No se detectó BUCKET_NAME. Los archivos no se guardarán en la nube.");
   }
 } catch (error) {
   console.error("❌ Error inicializando Google Storage:", error.message);
 }
 
-// Definir rutas base
+// Directorios
 const publicDir = path.join(process.cwd(), 'public');
 const outputsDir = path.join(publicDir, 'outputs');
 
-// --- LIMPIEZA AUTOMÁTICA AL INICIAR (SOLO MODO LOCAL) ---
-if (!bucketName) {
-  if (fs.existsSync(outputsDir)) {
-    try {
-      fs.rmSync(outputsDir, { recursive: true, force: true });
-      fs.mkdirSync(outputsDir);
-    } catch (e) {
-      console.log("⚠️ No se pudo limpiar la carpeta temporal anterior.");
-    }
-  } else {
-    fs.mkdirSync(outputsDir, { recursive: true });
-  }
+// Limpieza inicial de temporales (Solo si no hay bucket o para asegurar limpieza)
+if (!fs.existsSync(outputsDir)) {
+  fs.mkdirSync(outputsDir, { recursive: true });
 }
 
 // 2. Middlewares
 app.use(cors());
 app.use(express.json());
 
-// 3. Configuración de Archivos Estáticos
+// 3. Archivos Estáticos
 app.use('/outputs', express.static(outputsDir));
 app.use(express.static(publicDir));
 
-// 4. Rutas
+// 4. Rutas de Sistema
 
+// Health Check (Ping)
 app.get('/ping', (req, res) => res.send('pong 🏓'));
 
-// --- RUTA: GUARDAR (MUDANZA ORDENADA) ---
+// --- RUTA: GUARDAR CANCIÓN EN LA NUBE ---
 app.post('/api/save-song', async (req, res) => {
   try {
     if (!bucket) return res.status(500).json({ error: 'No hay Bucket configurado.' });
 
-    const { urls, userId, songTitle } = req.body; // Recibimos songTitle para la carpeta
+    const { urls, userId, songTitle } = req.body;
     if (!urls || !userId) return res.status(400).json({ error: 'Faltan datos.' });
 
     const savedUrls = [];
-    // Limpiamos el título para que sea válido como nombre de carpeta
+    // Sanitizar nombre de carpeta
     const safeTitle = (songTitle || 'Untitled').replace(/[^a-zA-Z0-9-_]/g, '_');
     const timestamp = Date.now();
-    const songFolder = `${timestamp}_${safeTitle}`; // Ej: 17123456_Mi_Cancion
+    const songFolder = `${timestamp}_${safeTitle}`;
 
     for (const url of urls) {
       if (!url) continue;
       try {
+        // Extraer nombre del archivo de la URL actual
         const urlParts = url.split(bucketName + '/')[1];
         if (!urlParts) continue;
 
         const decodedName = decodeURIComponent(urlParts);
-        // Detectar tipo de archivo original (vocals, drums, etc) para mantener el nombre limpio
         let originalFileName = decodedName.split('/').pop();
 
-        // Si el archivo ya tiene prefijos raros, intentamos limpiarlo, 
-        // pero lo más importante es la carpeta contenedora.
-
-        // Nueva Ruta: saved_songs / USER_ID / SONG_FOLDER / filename.mp3
+        // Destino: saved_songs / USER_ID / SONG_FOLDER / filename.mp3
         const destination = `saved_songs/${userId}/${songFolder}/${originalFileName}`;
 
+        // Copiar de temporal a permanente
         await bucket.file(decodedName).copy(bucket.file(destination));
-        // await bucket.file(destination).makePublic(); // YA NO ES NECESARIO
 
         const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
         savedUrls.push(publicUrl);
@@ -103,7 +89,6 @@ app.post('/api/save-song', async (req, res) => {
     }
 
     if (savedUrls.length === 0) return res.status(500).json({ error: 'No se pudo guardar nada.' });
-
     res.json({ savedUrls });
 
   } catch (error) {
@@ -112,37 +97,26 @@ app.post('/api/save-song', async (req, res) => {
   }
 });
 
-// --- RUTA: BORRAR CARPETA DE CANCIÓN ---
+// --- RUTA: BORRAR CANCIÓN DE LA NUBE ---
 app.post('/api/delete-song', async (req, res) => {
   try {
-    console.log("🗑️ Petición de borrado recibida. Body:", req.body); // <--- LOG NUEVO
-
-    if (!bucket) {
-      return res.status(500).json({ error: 'No hay Bucket configurado.' });
-    }
+    if (!bucket) return res.status(500).json({ error: 'No hay Bucket configurado.' });
 
     const { folderPath } = req.body;
+    if (!folderPath) return res.status(400).json({ error: 'Falta folderPath.' });
 
-    if (!folderPath) {
-      console.error("❌ Error: folderPath llegó vacío o undefined.");
-      return res.status(400).json({ error: 'Falta folderPath.' });
-    }
-
-    console.log(`📂 Ejecutando borrado en prefijo: ${folderPath}`);
-
-    // Borra todos los archivos que empiecen con esa ruta
+    console.log(`🗑️ Borrando carpeta de nube: ${folderPath}`);
     await bucket.deleteFiles({ prefix: folderPath });
 
-    console.log("✅ Archivos eliminados del bucket correctamente.");
     res.json({ success: true });
-
   } catch (error) {
     console.error("❌ Error delete-song:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Rutas API
+// --- RUTA PRINCIPAL DE PROCESAMIENTO (Separación) ---
+// Aquí es donde vive la lógica de subir archivo y separar
 app.use('/api', apiRoutes);
 
 // 5. Iniciar Servidor
@@ -159,4 +133,4 @@ const server = app.listen(PORT, () => {
   `);
 });
 
-server.setTimeout(1200000);
+server.setTimeout(1200000); // 20 minutos timeout

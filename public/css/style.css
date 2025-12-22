@@ -44,8 +44,6 @@ body {
     background: rgba(255, 255, 255, 0.05);
     bottom: -150px;
     border-radius: 50%;
-
-    /* ACELERACIÓN POR HARDWARE */
     transform: translate3d(0, 0, 0);
     will-change: transform;
     animation: animate 25s linear infinite;
@@ -73,6 +71,8 @@ body {
     animation-delay: 4s;
 }
 
+/* ... puedes dejar el resto de círculos o borrarlos si no los usas ... */
+
 @keyframes animate {
     0% {
         transform: translateY(0) rotate(0deg);
@@ -95,34 +95,26 @@ body {
 }
 
 .glass-card {
-    /* Fondo base sólido (Fallback por si no funciona el blur) */
     background: rgba(18, 18, 23, 0.95);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
     border: 1px solid var(--glass-border);
     border-radius: 20px;
     padding: 40px;
-
     width: 100%;
     max-width: 550px;
     text-align: center;
     position: relative;
-
-    /* OPTIMIZACIÓN DE MOVIMIENTO (Aceleración por Hardware) */
     transform: translate3d(0, 0, 0);
     will-change: width, max-width, height, padding;
-
-    /* Transiciones suaves */
     transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
         max-width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
         height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
         padding 0.6s ease;
 }
 
-/* Regla de compatibilidad para efecto Blur (separada para evitar errores) */
 @supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
     .glass-card {
         background: rgba(18, 18, 23, 0.75);
-        /* Más transparente si hay blur */
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
     }
@@ -160,11 +152,8 @@ body {
 #user-panel {
     position: absolute;
     top: 20px;
-
-    /* Estado 1: Centrado */
     left: 50%;
     transform: translateX(-50%);
-
     display: flex;
     align-items: center;
     gap: 20px;
@@ -175,12 +164,10 @@ body {
     z-index: 50;
     backdrop-filter: blur(5px);
     transition: all 0.6s cubic-bezier(0.2, 1, 0.3, 1);
-
     width: auto;
     min-width: fit-content;
 }
 
-/* Estado 2: A la izquierda (cuando expandido) */
 .glass-card.expanded #user-panel {
     left: 30px;
     transform: translateX(0);
@@ -231,14 +218,9 @@ body {
     border-radius: 20px;
     padding: 50px 40px;
     width: 100%;
-
-    /* CAMBIO 1: Ancho igual al de la app principal (antes era 420px) */
     max-width: 550px;
-
     text-align: center;
     margin: auto;
-
-    /* Agregamos la transición suave de tamaño aquí también */
     transition: all 0.6s cubic-bezier(0.2, 1, 0.3, 1);
 }
 
@@ -247,12 +229,8 @@ body {
     margin-bottom: 10px;
     font-weight: 700;
     color: white;
-    /* Ahora es blanco sólido, igual que en la app principal */
-
-    /* ELIMINAMOS las líneas de background-clip y gradient que causaban la diferencia */
 }
 
-/* Aseguramos que el "AI" (la clase accent) herede el color correcto dentro del h2 */
 .auth-header h2 .accent {
     color: var(--accent-color);
 }
@@ -293,7 +271,6 @@ body {
     background: rgba(0, 0, 0, 0.6) !important;
 }
 
-/* Fix Autocompletar Chrome */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -348,6 +325,42 @@ input:-webkit-autofill:active {
     margin-bottom: 15px;
 }
 
+/* --- DIVIDER (SEPARADOR "O") --- */
+.divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 25px 0;
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Líneas a los lados */
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    /* Línea muy sutil */
+}
+
+/* El texto "O" */
+.divider span {
+    padding: 0 15px;
+    color: rgba(255, 255, 255, 0.4);
+    /* Grisáceo (no blanco fuerte) */
+    font-size: 0.75rem;
+    /* Pequeño */
+    font-weight: 600;
+    text-transform: uppercase;
+    line-height: 1;
+    /* Elimina espacio vertical extra */
+    position: relative;
+    top: -1px;
+    /* Ajuste milimétrico de centrado */
+}
+
 /* --- UPLOAD UI --- */
 .styled-select {
     background: rgba(255, 255, 255, 0.05);
@@ -388,31 +401,7 @@ select option {
     display: block;
 }
 
-.youtube-box {
-    display: flex;
-    gap: 10px;
-    margin-top: 15px;
-}
-
-.youtube-box .input-group {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 8px;
-    padding: 0 15px;
-    border: 1px solid transparent;
-}
-
-.youtube-box input {
-    width: 100%;
-    background: transparent;
-    border: none;
-    padding: 12px;
-    color: white;
-    outline: none;
-}
-
+/* BOTON PRINCIPAL (Reutilizado para 'Seleccionar Archivo') */
 .btn-primary {
     background: linear-gradient(135deg, #7c4dff, #3700b3);
     border: none;
@@ -429,25 +418,6 @@ select option {
 .btn-primary:hover {
     filter: brightness(1.2);
     transform: translateY(-2px);
-}
-
-.divider {
-    display: flex;
-    align-items: center;
-    margin: 25px 0;
-    color: rgba(255, 255, 255, 0.2);
-    font-size: 0.8rem;
-}
-
-.divider::before,
-.divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.divider span {
-    padding: 0 10px;
 }
 
 /* --- PLAYER UI --- */
@@ -483,8 +453,6 @@ select option {
     color: #ffffff;
     font-weight: 600;
     padding-left: 100%;
-
-    /* Optimización Marquee */
     transform: translate3d(0, 0, 0);
     will-change: transform;
     backface-visibility: hidden;
@@ -982,26 +950,20 @@ input[type=range]::-webkit-slider-thumb {
     border: none;
     border-radius: 20px;
     padding: 6px 16px;
-    /* Un poquito más grande para que sea clickable */
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: 700;
     color: black;
-
-    /* Animación Suave */
     transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
-/* Hover: Se levanta un poco y brilla */
 .btn-login-guest:hover {
     transform: translateY(-1px) scale(1.05);
     filter: brightness(1.1);
     box-shadow: 0 4px 12px rgba(187, 134, 252, 0.4);
-    /* Sombra morada */
 }
 
-/* Click: Se hunde */
 .btn-login-guest:active {
     transform: translateY(1px) scale(0.95);
     filter: brightness(0.9);
@@ -1033,7 +995,6 @@ div:where(.swal2-container) button.swal2-styled.swal2-confirm {
     box-shadow: 0 4px 15px rgba(124, 77, 255, 0.4) !important;
 }
 
-/* Iconos personalizados */
 .swal2-icon.swal2-success {
     border-color: #00E676 !important;
     color: #00E676 !important;
@@ -1044,14 +1005,11 @@ div:where(.swal2-container) button.swal2-styled.swal2-confirm {
     color: #ff5252 !important;
 }
 
-/* --- FIX PARA QUE LA ALERTA SALGA ENCIMA DEL MODAL --- */
 div:where(.swal2-container) {
     z-index: 99999 !important;
 }
 
-/* Clase para rotar íconos dentro de botones */
 .icon-spin {
     animation: spin 1s linear infinite;
     font-size: 1.2rem;
-    /* Ajuste visual */
 }

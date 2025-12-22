@@ -22,10 +22,6 @@ export const splitTrack = async (req, res) => {
         // --- CORRECCIÓN AQUÍ: Agregamos "const result =" ---
         const result = await processAudio(inputPath, randomId, format, songLabel);
 
-        // 1. URLs de STEMS
-        const stems = ['karaoke', 'vocals', 'drums', 'bass', 'other']; // Karaoke no, porque lo manejamos aparte ahora?
-        // Ah, recuerda que habíamos sacado 'karaoke' de la lista visual.
-        // Solo usamos los 4 originales para el player:
         const playerStems = ['vocals', 'drums', 'bass', 'other'];
 
         const filesUrls = playerStems.map(stem => {

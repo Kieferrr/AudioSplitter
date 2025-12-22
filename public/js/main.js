@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const glassCard = document.querySelector('.glass-card');
     let currentUser = null;
 
-    // Referencias
+    // Referencias UI
     const appHeaderElement = document.querySelector('.app-header');
     const uploadUi = document.getElementById('upload-ui');
     const resultsArea = document.getElementById('results-area');
@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- PANEL USUARIO ---
+    // --- PANEL USUARIO (CORREGIDO Y COMPACTO) ---
     const updateHeaderWithUser = (user) => {
         const existingPanel = document.getElementById('user-panel');
         if (existingPanel) existingPanel.remove();
@@ -67,7 +67,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const userPanel = document.createElement('div');
         userPanel.id = 'user-panel';
 
+        // Forzamos estilo en línea para asegurar que no se rompa la fila
+        userPanel.style.display = 'flex';
+        userPanel.style.alignItems = 'center';
+        userPanel.style.whiteSpace = 'nowrap';
+
         if (user) {
+            // --- CASO 1: USUARIO LOGUEADO (Normal) ---
             const displayName = user.displayName || "Usuario";
 
             userPanel.innerHTML = `
@@ -88,13 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
             glassCard.appendChild(userPanel);
 
-            // Listener Logout
+            // Listeners Usuario
             document.getElementById('btnLogout').addEventListener('click', async () => {
                 await authService.logout();
                 showLogin();
             });
 
-            // Listener Library
             document.getElementById('btnLibrary').addEventListener('click', () => {
                 new LibraryModal(user.uid, (songData) => {
                     resetApplication();
@@ -105,14 +110,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // NUEVO LISTENER SETTINGS
             document.getElementById('btnSettings').addEventListener('click', () => {
-                // Pasamos el usuario y qué hacer si se borra la cuenta (showLogin)
                 new SettingsModal(user, () => showLogin());
             });
 
         } else {
-            // ... (código de invitado igual que antes) ...
+            // --- CASO 2: INVITADO (CORREGIDO: UNA SOLA LÍNEA) ---
+
+            // 1. Reducimos el gap (espacio) visualmente solo para este modo
+            userPanel.style.gap = '10px';
+
+            userPanel.innerHTML = `
+                <span class="user-email" style="color: #aaa; font-size: 0.8rem;">Invitado</span>
+                
+                <button id="btnLoginGuestBack" class="btn-login-guest" style="padding: 4px 12px; font-size: 0.75rem;">
+                    Iniciar Sesión
+                </button>
+            `;
+            glassCard.appendChild(userPanel);
+
+            // Listener para volver al Login
+            document.getElementById('btnLoginGuestBack').addEventListener('click', () => {
+                showLogin();
+            });
         }
     };
 
@@ -142,21 +162,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (isJustCreated && noName) {
                 console.log("⏳ Esperando actualización de nombre para usuario nuevo...");
-                return; // NO mostramos la app todavía
+                return;
             }
-            // -------------------------
-
             showApp(user);
         } else {
             showLogin();
         }
     });
 
-    // --- LOGICA UPLOAD ---
+    // --- LOGICA UPLOAD (SOLO ARCHIVOS LOCALES) ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('fileInput');
-    const youtubeInput = document.getElementById('youtubeInput');
-    const youtubeBtn = document.getElementById('youtubeBtn');
     const formatSelect = document.getElementById('formatSelect');
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
@@ -169,37 +185,60 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBarContainer.after(timerText);
     }
 
+    // Eventos de Drag & Drop y Click
     dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleUpload(e.target.files[0]); });
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-active'); }, false);
-    });
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-active'); }, false);
-    });
-    dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]); });
-    youtubeBtn.addEventListener('click', () => { if (youtubeInput.value.trim()) handleYoutube(youtubeInput.value.trim()); });
-    youtubeInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') youtubeBtn.click(); });
 
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleUpload(e.target.files[0]);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drag-active');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-active');
+        }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]);
+    });
+
+    // Helpers de tiempo
     function estimateProcessingTime(duration, format) { return (duration * 0.9) + (format === 'wav' ? 60 : 30); }
+
     function getAudioDuration(file) {
         return new Promise(resolve => {
             const url = URL.createObjectURL(file);
             const a = new Audio(url);
             a.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(a.duration); };
-            a.onerror = () => resolve(180);
+            a.onerror = () => resolve(180); // Default 3 min si falla lectura
         });
     }
 
     function startProgressTimer(seconds) {
-        progressBarContainer.style.display = 'block'; progressBar.style.width = '0%'; progressBar.classList.remove('indeterminate');
+        progressBarContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.classList.remove('indeterminate');
+
         const start = Date.now();
         if (visualTimerInterval) clearInterval(visualTimerInterval);
+
         visualTimerInterval = setInterval(() => {
             const elapsed = (Date.now() - start) / 1000;
             let pct = (elapsed / seconds) * 100; if (pct > 95) pct = 95;
+
             progressBar.style.width = `${pct}%`;
             const left = Math.max(0, seconds - elapsed);
+
             if (left > 0) {
                 const m = Math.floor(left / 60), s = Math.floor(left % 60);
                 timerText.textContent = `Tiempo estimado: ${m}:${s.toString().padStart(2, '0')}`;
@@ -209,27 +248,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 100);
     }
+
     function stopProgressTimer() {
         if (visualTimerInterval) clearInterval(visualTimerInterval);
-        progressBar.classList.remove('indeterminate'); progressBar.style.width = '100%'; timerText.textContent = "¡Listo!";
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.width = '100%';
+        timerText.textContent = "¡Listo!";
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
+    // --- PROCESAMIENTO PRINCIPAL ---
     async function handleUpload(file) {
         showLoader("Analizando archivo...");
+
+        // Obtenemos duración para calcular barra de progreso
         const dur = await getAudioDuration(file);
         const fmt = formatSelect.value;
+
         loaderText.textContent = `Procesando: ${file.name}`;
         startProgressTimer(estimateProcessingTime(dur, fmt));
 
-        const fd = new FormData(); fd.append('audioFile', file); fd.append('format', fmt);
+        const fd = new FormData();
+        fd.append('audioFile', file);
+        fd.append('format', fmt);
+
         try {
             const res = await fetch('/api/upload', { method: 'POST', body: fd });
-            if (!res.ok) throw new Error('Error Servidor');
+            if (!res.ok) throw new Error('Error en el servidor');
+
             const data = await res.json();
             currentSongData = { ...data, format: fmt };
+
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
+
         } catch (e) {
             console.error(e);
             stopProgressTimer();
@@ -238,34 +290,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: '¡Ups!',
                 text: e.message || 'Ocurrió un error al procesar el archivo.',
                 confirmButtonText: 'Entendido'
-            });
-            resetUI();
-        }
-    }
-
-    async function handleYoutube(url) {
-        showLoader("Analizando video...");
-        try {
-            const info = await fetch('/api/youtube-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youtubeUrl: url }) });
-            if (!info.ok) throw new Error('Error info');
-            const meta = await info.json();
-            loaderText.textContent = `Procesando: ${meta.title}`;
-            startProgressTimer(estimateProcessingTime(meta.duration, formatSelect.value));
-
-            const res = await fetch('/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ youtubeUrl: url, format: formatSelect.value }) });
-            if (!res.ok) throw new Error('Error procesar');
-            const data = await res.json();
-            currentSongData = { ...data, format: formatSelect.value };
-            stopProgressTimer();
-            initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
-        } catch (e) {
-            console.error(e);
-            stopProgressTimer();
-            Swal.fire({
-                icon: 'error',
-                title: 'Error de YouTube',
-                text: e.message || 'No se pudo procesar el video.',
-                confirmButtonText: 'Cerrar'
             });
             resetUI();
         }
@@ -280,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loader.classList.add('hidden');
         progressBarContainer.style.display = 'none';
         uploadUi.classList.remove('hidden');
-        fileInput.value = ''; youtubeInput.value = '';
+        fileInput.value = '';
     }
 
     // --- REPRODUCTOR (DAW) ---
@@ -345,13 +369,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const b = e.currentTarget;
                     const originalText = b.innerHTML;
                     b.disabled = true;
-                    // Usamos 'sync' o 'refresh' con la clase simple .icon-spin
                     b.innerHTML = '<span class="material-icons icon-spin">sync</span> Guardando...';
 
                     try {
                         await dbService.saveSong(currentUser.uid, currentSongData);
 
-                        // ALERTA EXITOSA (Toast)
                         const Toast = Swal.mixin({
                             toast: true,
                             position: 'top-end',
