@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const glassCard = document.querySelector('.glass-card');
     let currentUser = null;
 
+    if (glassCard) glassCard.style.position = 'relative';
+
     // Referencias UI
     const appHeaderElement = document.querySelector('.app-header');
     const uploadUi = document.getElementById('upload-ui');
@@ -52,36 +54,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO (CON ANIMACIÓN "POP" Y CENTRADO CORRECTO) ---
+    // --- HEADER USUARIO (CON CRÉDITOS VISIBLES) ---
     const updateHeaderWithUser = async (user) => {
-        const existingPanel = document.getElementById('user-panel');
-        if (existingPanel) existingPanel.remove();
 
-        const userPanel = document.createElement('div');
-        userPanel.id = 'user-panel';
-        userPanel.style.display = 'flex';
-        userPanel.style.alignItems = 'center';
-        userPanel.style.whiteSpace = 'nowrap';
+        let userPanel = document.getElementById('user-panel');
+        let isNew = false;
 
-        // --- ESTADO INICIAL DE LA ANIMACIÓN ---
-        // IMPORTANTE: Mantenemos translateX(-50%) para que siga centrado
-        userPanel.style.opacity = '0';
-        userPanel.style.transform = 'translateX(-50%) scale(0.9)';
+        if (!userPanel) {
+            isNew = true;
+            userPanel = document.createElement('div');
+            userPanel.id = 'user-panel';
+            userPanel.style.display = 'flex';
+            userPanel.style.alignItems = 'center';
+            userPanel.style.whiteSpace = 'nowrap';
 
-        // Transición suave
-        userPanel.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            // ESTILOS CÁPSULA
+            userPanel.style.background = 'rgba(255, 255, 255, 0.08)';
+            userPanel.style.backdropFilter = 'blur(12px)';
+            userPanel.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+            userPanel.style.borderRadius = '50px';
+            userPanel.style.padding = '6px 16px';
+            userPanel.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+
+            userPanel.style.position = 'absolute';
+            userPanel.style.top = '25px';
+            userPanel.style.zIndex = '10';
+
+            userPanel.style.transition = 'transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.6s ease, left 0.5s ease';
+            userPanel.style.opacity = '0';
+        }
+
+        const isExpanded = glassCard.classList.contains('expanded');
+        let targetLeft, targetTransformFinal, targetTransformInitial;
+
+        if (isExpanded) {
+            targetLeft = '25px';
+            targetTransformFinal = 'translateX(0) scale(1)';
+            targetTransformInitial = 'translateX(0) scale(0.8)';
+        } else {
+            targetLeft = '50%';
+            targetTransformFinal = 'translateX(-50%) scale(1)';
+            targetTransformInitial = 'translateX(-50%) scale(0.8)';
+        }
 
         if (user) {
             let finalDisplayName = user.displayName || "Usuario";
+            let credits = 0; // Valor por defecto
 
             try {
+                // Siempre consultamos para tener los créditos frescos
                 const dbData = await authService.getUserData(user.uid);
-                if (dbData && (dbData.username || dbData.displayName)) {
-                    finalDisplayName = dbData.username || dbData.displayName;
+                if (dbData) {
+                    if (dbData.username || dbData.displayName) {
+                        finalDisplayName = dbData.username || dbData.displayName;
+                    }
+                    // Leemos los créditos (si no existen, asumimos 0)
+                    credits = dbData.credits !== undefined ? dbData.credits : 0;
                 }
-            } catch (e) {
-                console.warn("No se pudo obtener datos extra del usuario", e);
-            }
+            } catch (e) { console.warn(e); }
 
             userPanel.innerHTML = `
             <button id="btnLibrary" class="header-btn">
@@ -89,8 +119,11 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>
             <div class="v-divider"></div>
             
-            <span class="user-email">${finalDisplayName}</span>
-            
+            <div style="display: flex; flex-direction: column; align-items: flex-start; margin-right: 5px;">
+                <span class="user-email" style="font-weight: 600; line-height: 1.1;">${finalDisplayName}</span>
+                <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">${credits} créditos</span>
+            </div>
+
             <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
                 <span class="material-icons">settings</span>
             </button>
@@ -99,14 +132,12 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>
             `;
 
-            glassCard.appendChild(userPanel);
-
             // Listeners
-            document.getElementById('btnLogout').addEventListener('click', async () => {
-                await authService.logout();
-                showLogin();
-            });
-            document.getElementById('btnLibrary').addEventListener('click', () => {
+            const btnLogout = userPanel.querySelector('#btnLogout');
+            if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
+
+            const btnLibrary = userPanel.querySelector('#btnLibrary');
+            if (btnLibrary) btnLibrary.onclick = () => {
                 new LibraryModal(user.uid, (songData) => {
                     resetApplication();
                     setTimeout(() => {
@@ -114,13 +145,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
                     }, 350);
                 });
-            });
-            document.getElementById('btnSettings').addEventListener('click', () => {
-                new SettingsModal(user, () => showLogin());
-            });
+            };
+
+            const btnSettings = userPanel.querySelector('#btnSettings');
+            if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
 
         } else {
-            // Invitado
             userPanel.style.gap = '10px';
             userPanel.innerHTML = `
                 <span class="user-email" style="color: #aaa; font-size: 0.8rem;">Invitado</span>
@@ -128,40 +158,54 @@ document.addEventListener('DOMContentLoaded', () => {
                     Iniciar Sesión
                 </button>
             `;
-            glassCard.appendChild(userPanel);
-            document.getElementById('btnLoginGuestBack').addEventListener('click', () => showLogin());
+            const btnGuest = userPanel.querySelector('#btnLoginGuestBack');
+            if (btnGuest) btnGuest.onclick = () => showLogin();
         }
 
-        // --- ESTADO FINAL (DISPARAR ANIMACIÓN) ---
-        // Volvemos a escala 1 pero MANTENIENDO el centrado translateX(-50%)
-        setTimeout(() => {
-            userPanel.style.opacity = '1';
-            userPanel.style.transform = 'translateX(-50%) scale(1)';
-        }, 50);
+        if (isNew) {
+            userPanel.style.left = targetLeft;
+            userPanel.style.transform = targetTransformInitial;
+            glassCard.appendChild(userPanel);
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    userPanel.style.opacity = '1';
+                    userPanel.style.left = targetLeft;
+                    userPanel.style.transform = targetTransformFinal;
+                });
+            });
+        } else {
+            requestAnimationFrame(() => {
+                userPanel.style.opacity = '1';
+                userPanel.style.left = targetLeft;
+                userPanel.style.transform = targetTransformFinal;
+            });
+        }
     };
 
     const showApp = (user) => {
-        if (!appContainer.classList.contains('hidden') && currentUser?.uid === user.uid) {
-            return;
-        }
-
+        if (!appContainer.classList.contains('hidden') && currentUser?.uid === user.uid) return;
         currentUser = user;
         updateHeaderWithUser(user);
-
         if (!appContainer.classList.contains('hidden')) return;
-
-        transitionViews(authContainer, appContainer, () => {
-            authContainer.innerHTML = '';
-        });
+        transitionViews(authContainer, appContainer, () => { authContainer.innerHTML = ''; });
     };
 
     const showLogin = () => {
         currentUser = null;
         if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) return;
-
         transitionViews(appContainer, authContainer, () => {
             resetApplication();
             glassCard.classList.remove('expanded');
+
+            const p = document.getElementById('user-panel');
+            if (p) {
+                // Animación de salida: encoger y desaparecer
+                p.style.transform = p.style.transform.replace('scale(1)', 'scale(0.8)');
+                p.style.opacity = '0';
+                setTimeout(() => p.remove(), 300);
+            }
+
             new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
         });
     };
@@ -188,7 +232,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleUpload(e.target.files[0]); });
-
     ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.add('drag-active'); }));
     ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.remove('drag-active'); }));
     dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]); });
@@ -282,7 +325,12 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         transitionViews(loader, resultsArea, () => {
-            appHeaderElement.classList.add('hidden'); uploadUi.classList.add('hidden'); glassCard.classList.add('expanded');
+            appHeaderElement.classList.add('hidden');
+            uploadUi.classList.add('hidden');
+            glassCard.classList.add('expanded');
+
+            // REUTILIZAR EL PANEL (Esto lo moverá a la izquierda)
+            if (currentUser) updateHeaderWithUser(currentUser);
         });
 
         setTimeout(() => {
@@ -363,6 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
             appHeaderElement.classList.remove('hidden'); glassCard.classList.remove('expanded');
             tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); }); tracks = []; resultsArea.innerHTML = '';
             resetUI(); currentSongData = null;
+            // REUTILIZAR EL PANEL (Esto lo moverá al centro)
+            if (currentUser) updateHeaderWithUser(currentUser);
         });
     }
 });

@@ -15,6 +15,8 @@ import {
     doc,
     setDoc,
     getDoc,
+    updateDoc,
+    deleteDoc,
     serverTimestamp,
     collection,
     query,
@@ -40,7 +42,8 @@ export const authService = {
             await user.reload();
             user = auth.currentUser;
 
-            await this.saveUserToDB(user, username);
+            // Al registrarse, pasamos el flag isNew = true
+            await this.saveUserToDB(user, username, true);
             sendEmailVerification(user).catch(err => console.error("Error enviando verificación:", err));
 
             return user;
@@ -67,6 +70,8 @@ export const authService = {
             }
 
             const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
+            // En login normal, solo actualizamos fecha (isNew = false)
+            await this.saveUserToDB(userCredential.user, null, false);
             return userCredential.user;
         } catch (error) {
             console.error("Error en login:", error);
@@ -83,20 +88,24 @@ export const authService = {
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            // Sincronización silenciosa (la UI se encargará de mostrar el nombre correcto)
+            // Sincronización silenciosa
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
 
             if (userSnap.exists()) {
+                // USUARIO EXISTENTE
                 const data = userSnap.data();
                 const dbName = data.username || data.displayName;
 
                 if (dbName && dbName !== user.displayName) {
                     await updateProfile(user, { displayName: dbName });
                 }
-                await this.saveUserToDB(user, null);
+                // Actualizamos fecha (isNew = false)
+                await this.saveUserToDB(user, null, false);
             } else {
-                await this.saveUserToDB(user, user.displayName);
+                // USUARIO NUEVO
+                // Guardamos con nombre de Google y (isNew = true) para dar créditos
+                await this.saveUserToDB(user, user.displayName, true);
             }
 
             return auth.currentUser;
@@ -107,7 +116,7 @@ export const authService = {
         }
     },
 
-    // --- OBTENER DATOS REALES DE BD (NUEVO) ---
+    // --- OBTENER DATOS REALES DE BD ---
     async getUserData(uid) {
         try {
             const userRef = doc(db, "users", uid);
@@ -131,18 +140,78 @@ export const authService = {
         catch (error) { console.error("Error logout:", error); }
     },
 
+    // --- BORRAR CUENTA COMPLETA (DB + AUTH) ---
     async deleteAccount() {
-        try { const user = auth.currentUser; if (user) await deleteUser(user); }
-        catch (error) { throw error; }
+        try {
+            const user = auth.currentUser;
+            if (user) {
+                // 1. Primero borramos sus datos en Firestore
+                const userRef = doc(db, "users", user.uid);
+                await deleteDoc(userRef);
+
+                // 2. Luego borramos su acceso (Auth)
+                await deleteUser(user);
+            }
+        } catch (error) {
+            console.error("Error borrando cuenta:", error);
+            // Si falla porque hace mucho que no se loguea, Firebase pide re-login
+            if (error.code === 'auth/requires-recent-login') {
+                throw "Por seguridad, debes cerrar sesión e iniciar de nuevo antes de borrar tu cuenta.";
+            }
+            throw error;
+        }
     },
 
-    async saveUserToDB(user, username = null) {
+    // --- GUARDAR USUARIO EN FIRESTORE (ECONOMÍA Y ROLES) ---
+    async saveUserToDB(user, username = null, isNewUser = false) {
         try {
             const userRef = doc(db, "users", user.uid);
-            const userData = { email: user.email, lastLogin: serverTimestamp(), uid: user.uid };
-            if (username) { userData.displayName = username; userData.username = username; }
-            await setDoc(userRef, userData, { merge: true });
-        } catch (error) { console.error("Error DB save:", error); }
+
+            if (isNewUser) {
+                // --- CASO 1: USUARIO NUEVO (REGALAMOS CRÉDITOS) ---
+                const newUserPayload = {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: username || user.displayName,
+                    username: username || user.displayName || "Usuario",
+                    photoURL: user.photoURL || null,
+                    createdAt: serverTimestamp(),
+                    lastLogin: serverTimestamp(),
+                    // --- AQUÍ ESTÁ LA MAGIA ---
+                    role: 'user',       // Rol por defecto
+                    credits: 100        // Créditos de bienvenida
+                };
+
+                // Usamos setDoc para crear el documento inicial
+                await setDoc(userRef, newUserPayload, { merge: true });
+                console.log("🎉 Usuario creado con 100 créditos de regalo.");
+
+            } else {
+                // --- CASO 2: USUARIO ANTIGUO (SOLO ACTUALIZAMOS LOGIN) ---
+                // Usamos updateDoc para NO tocar los créditos ni el rol accidentalmente
+                const updatePayload = {
+                    lastLogin: serverTimestamp()
+                };
+                // Solo actualizamos nombre si se proporciona explícitamente
+                if (username) updatePayload.displayName = username;
+
+                // updateDoc falla si el documento no existe, así que hacemos un fallback seguro
+                try {
+                    await updateDoc(userRef, updatePayload);
+                } catch (e) {
+                    // Si por alguna razón rara no existía el doc, lo creamos
+                    await setDoc(userRef, {
+                        ...updatePayload,
+                        uid: user.uid,
+                        email: user.email,
+                        role: 'user',
+                        credits: 100
+                    }, { merge: true });
+                }
+            }
+        } catch (error) {
+            console.error("Error guardando usuario en DB:", error);
+        }
     },
 
     observeAuthState(callback) {
