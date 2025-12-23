@@ -9,3 +9,4 @@ public/outputs/
 public/temp/
 cookies.txt
 gcp-key.json
+serviceAccountKey.json

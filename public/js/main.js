@@ -54,12 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO (CON CRÉDITOS VISIBLES) ---
+    // --- HEADER USUARIO (LÓGICA ANTI-PARPADEO / FORCED REFLOW) ---
     const updateHeaderWithUser = async (user) => {
 
         let userPanel = document.getElementById('user-panel');
         let isNew = false;
 
+        // 1. CREAR SI NO EXISTE
         if (!userPanel) {
             isNew = true;
             userPanel = document.createElement('div');
@@ -80,35 +81,33 @@ document.addEventListener('DOMContentLoaded', () => {
             userPanel.style.top = '25px';
             userPanel.style.zIndex = '10';
 
-            userPanel.style.transition = 'transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.6s ease, left 0.5s ease';
+            // EMPIEZA INVISIBLE Y SIN TRANSICIÓN (Para moverlo rápido)
             userPanel.style.opacity = '0';
+            userPanel.style.transition = 'none';
+
+            glassCard.appendChild(userPanel);
         }
 
+        // 2. CALCULAR DÓNDE DEBE ESTAR
         const isExpanded = glassCard.classList.contains('expanded');
-        let targetLeft, targetTransformFinal, targetTransformInitial;
+        let targetLeft, targetTransform;
 
         if (isExpanded) {
             targetLeft = '25px';
-            targetTransformFinal = 'translateX(0) scale(1)';
-            targetTransformInitial = 'translateX(0) scale(0.8)';
+            targetTransform = 'translateX(0) scale(1)';
         } else {
             targetLeft = '50%';
-            targetTransformFinal = 'translateX(-50%) scale(1)';
-            targetTransformInitial = 'translateX(-50%) scale(0.8)';
+            targetTransform = 'translateX(-50%) scale(1)';
         }
 
+        // 3. LLENAR DATOS
         if (user) {
             let finalDisplayName = user.displayName || "Usuario";
-            let credits = 0; // Valor por defecto
-
+            let credits = 0;
             try {
-                // Siempre consultamos para tener los créditos frescos
                 const dbData = await authService.getUserData(user.uid);
                 if (dbData) {
-                    if (dbData.username || dbData.displayName) {
-                        finalDisplayName = dbData.username || dbData.displayName;
-                    }
-                    // Leemos los créditos (si no existen, asumimos 0)
+                    if (dbData.username || dbData.displayName) finalDisplayName = dbData.username || dbData.displayName;
                     credits = dbData.credits !== undefined ? dbData.credits : 0;
                 }
             } catch (e) { console.warn(e); }
@@ -118,12 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="material-icons">library_music</span> Mis Canciones
             </button>
             <div class="v-divider"></div>
-            
             <div style="display: flex; flex-direction: column; align-items: flex-start; margin-right: 5px;">
                 <span class="user-email" style="font-weight: 600; line-height: 1.1;">${finalDisplayName}</span>
                 <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">${credits} créditos</span>
             </div>
-
             <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
                 <span class="material-icons">settings</span>
             </button>
@@ -135,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Listeners
             const btnLogout = userPanel.querySelector('#btnLogout');
             if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
-
             const btnLibrary = userPanel.querySelector('#btnLibrary');
             if (btnLibrary) btnLibrary.onclick = () => {
                 new LibraryModal(user.uid, (songData) => {
@@ -146,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }, 350);
                 });
             };
-
             const btnSettings = userPanel.querySelector('#btnSettings');
             if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
 
@@ -162,24 +157,44 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnGuest) btnGuest.onclick = () => showLogin();
         }
 
-        if (isNew) {
-            userPanel.style.left = targetLeft;
-            userPanel.style.transform = targetTransformInitial;
-            glassCard.appendChild(userPanel);
+        // 4. EL TRUCO DEL POSICIONAMIENTO PERFECTO ⚡
 
+        // Verificamos si es invisible (opacity 0) o nuevo
+        const isHidden = window.getComputedStyle(userPanel).opacity === '0' || userPanel.style.opacity === '0';
+
+        if (isHidden || isNew) {
+            // A. FASE FANTASMA: Moverlo mientras nadie mira
+            userPanel.style.transition = 'none'; // Apagamos animaciones para mover instantáneamente
+
+            userPanel.style.left = targetLeft;
+            userPanel.style.transform = targetTransform;
+
+            // !!! FORCED REFLOW !!! (Esto obliga al navegador a procesar el cambio de posición YA)
+            void userPanel.offsetWidth;
+
+            // B. FASE APARICIÓN: Ahora que está en su sitio, encendemos la luz
+            userPanel.style.transition = 'opacity 0.6s ease';
+
+            // Usamos Doble RequestAnimationFrame para asegurar que el frame invisible ya pasó
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     userPanel.style.opacity = '1';
-                    userPanel.style.left = targetLeft;
-                    userPanel.style.transform = targetTransformFinal;
                 });
             });
+
         } else {
-            requestAnimationFrame(() => {
-                userPanel.style.opacity = '1';
-                userPanel.style.left = targetLeft;
-                userPanel.style.transform = targetTransformFinal;
-            });
+            // B. YA ERA VISIBLE: Si por alguna razón extraña ya estaba visible pero en mal lugar
+            if (userPanel.style.left !== targetLeft) {
+                userPanel.style.opacity = '0';
+                setTimeout(() => {
+                    userPanel.style.transition = 'none';
+                    userPanel.style.left = targetLeft;
+                    userPanel.style.transform = targetTransform;
+                    void userPanel.offsetWidth; // Reflow
+                    userPanel.style.transition = 'opacity 0.6s ease';
+                    requestAnimationFrame(() => userPanel.style.opacity = '1');
+                }, 300);
+            }
         }
     };
 
@@ -200,8 +215,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const p = document.getElementById('user-panel');
             if (p) {
-                // Animación de salida: encoger y desaparecer
-                p.style.transform = p.style.transform.replace('scale(1)', 'scale(0.8)');
                 p.style.opacity = '0';
                 setTimeout(() => p.remove(), 300);
             }
@@ -269,23 +282,64 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
+    // --- PROCESAMIENTO PRINCIPAL ---
     async function handleUpload(file) {
+        if (!currentUser) {
+            Swal.fire({ icon: 'warning', title: 'Identifícate', text: 'Debes iniciar sesión para procesar canciones.' });
+            showLogin();
+            return;
+        }
+
         showLoader("Analizando archivo...");
-        const dur = await getAudioDuration(file), fmt = formatSelect.value;
+
+        // 1. Ocultar panel (Fade out)
+        const p = document.getElementById('user-panel');
+        if (p) {
+            p.style.transition = 'opacity 0.3s ease';
+            p.style.opacity = '0';
+        }
+
+        const dur = await getAudioDuration(file);
+        const fmt = formatSelect.value;
+
         loaderText.textContent = `Procesando: ${file.name}`;
         startProgressTimer(estimateProcessingTime(dur, fmt));
-        const fd = new FormData(); fd.append('audioFile', file); fd.append('format', fmt);
+
+        const fd = new FormData();
+        fd.append('audioFile', file);
+        fd.append('format', fmt);
 
         try {
-            const res = await fetch('/api/upload', { method: 'POST', body: fd });
-            if (!res.ok) throw new Error('Error servidor');
+            const token = await currentUser.getIdToken();
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: fd
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.message || 'Error en el servidor');
+            }
+
             const data = await res.json();
             currentSongData = { ...data, format: fmt };
+
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
+
+            // 2. Al llamar esto, el panel usará la lógica "Fase Fantasma" para aparecer en su sitio sin saltos
+            updateHeaderWithUser(currentUser);
+
         } catch (e) {
-            console.error(e); stopProgressTimer();
-            Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+            console.error(e);
+            stopProgressTimer();
+            const p = document.getElementById('user-panel');
+            if (p) p.style.opacity = '1';
+
+            let title = '¡Ups!';
+            if (e.message.includes('saldo') || e.message.includes('créditos')) title = 'Saldo Insuficiente';
+            Swal.fire({ icon: 'error', title: title, text: e.message || 'Error desconocido', confirmButtonText: 'Entendido' });
             resetUI();
         }
     }
@@ -329,7 +383,6 @@ document.addEventListener('DOMContentLoaded', () => {
             uploadUi.classList.add('hidden');
             glassCard.classList.add('expanded');
 
-            // REUTILIZAR EL PANEL (Esto lo moverá a la izquierda)
             if (currentUser) updateHeaderWithUser(currentUser);
         });
 
@@ -407,11 +460,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
+
+        // Ocultar antes de mover
+        const p = document.getElementById('user-panel');
+        if (p) p.style.opacity = '0';
+
         transitionViews(resultsArea, uploadUi, () => {
             appHeaderElement.classList.remove('hidden'); glassCard.classList.remove('expanded');
             tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); }); tracks = []; resultsArea.innerHTML = '';
             resetUI(); currentSongData = null;
-            // REUTILIZAR EL PANEL (Esto lo moverá al centro)
+            // Al resetear, volverá al centro con la lógica anti-parpadeo
             if (currentUser) updateHeaderWithUser(currentUser);
         });
     }
