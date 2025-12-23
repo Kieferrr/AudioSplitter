@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO (LÓGICA ANTI-PARPADEO / FORCED REFLOW) ---
+    // --- HEADER USUARIO (SIN ANIMACIONES RARAS, SOLO APARECE Y YA) ---
     const updateHeaderWithUser = async (user) => {
 
         let userPanel = document.getElementById('user-panel');
@@ -81,24 +81,32 @@ document.addEventListener('DOMContentLoaded', () => {
             userPanel.style.top = '25px';
             userPanel.style.zIndex = '10';
 
-            // EMPIEZA INVISIBLE Y SIN TRANSICIÓN (Para moverlo rápido)
+            // Transición suave SOLO para opacidad (aparecer)
+            userPanel.style.transition = 'opacity 0.4s ease';
             userPanel.style.opacity = '0';
-            userPanel.style.transition = 'none';
 
             glassCard.appendChild(userPanel);
         }
 
-        // 2. CALCULAR DÓNDE DEBE ESTAR
+        // 2. POSICIONAMIENTO FIJO (Siempre a la izquierda si está expandido, centro si no)
         const isExpanded = glassCard.classList.contains('expanded');
-        let targetLeft, targetTransform;
+
+        // Para evitar saltos, movemos instantáneamente
+        userPanel.style.transition = 'none'; // Quitamos transición de movimiento
 
         if (isExpanded) {
-            targetLeft = '25px';
-            targetTransform = 'translateX(0) scale(1)';
+            userPanel.style.left = '25px';
+            userPanel.style.transform = 'translateX(0)';
         } else {
-            targetLeft = '50%';
-            targetTransform = 'translateX(-50%) scale(1)';
+            userPanel.style.left = '50%';
+            userPanel.style.transform = 'translateX(-50%)';
         }
+
+        // Forzamos al navegador a aplicar la posición YA
+        void userPanel.offsetWidth;
+
+        // Reactivamos transición solo para el Fade In
+        userPanel.style.transition = 'opacity 0.4s ease';
 
         // 3. LLENAR DATOS
         if (user) {
@@ -129,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>
             `;
 
-            // Listeners
             const btnLogout = userPanel.querySelector('#btnLogout');
             if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
             const btnLibrary = userPanel.querySelector('#btnLibrary');
@@ -146,56 +153,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
 
         } else {
-            userPanel.style.gap = '10px';
-            userPanel.innerHTML = `
-                <span class="user-email" style="color: #aaa; font-size: 0.8rem;">Invitado</span>
-                <button id="btnLoginGuestBack" class="btn-login-guest" style="padding: 4px 12px; font-size: 0.75rem;">
-                    Iniciar Sesión
-                </button>
-            `;
-            const btnGuest = userPanel.querySelector('#btnLoginGuestBack');
-            if (btnGuest) btnGuest.onclick = () => showLogin();
+            // Caso raro, no debería pasar porque bloqueamos invitados, pero por seguridad
+            userPanel.innerHTML = `<span class="user-email" style="color: #aaa;">Invitado</span>`;
         }
 
-        // 4. EL TRUCO DEL POSICIONAMIENTO PERFECTO ⚡
-
-        // Verificamos si es invisible (opacity 0) o nuevo
-        const isHidden = window.getComputedStyle(userPanel).opacity === '0' || userPanel.style.opacity === '0';
-
-        if (isHidden || isNew) {
-            // A. FASE FANTASMA: Moverlo mientras nadie mira
-            userPanel.style.transition = 'none'; // Apagamos animaciones para mover instantáneamente
-
-            userPanel.style.left = targetLeft;
-            userPanel.style.transform = targetTransform;
-
-            // !!! FORCED REFLOW !!! (Esto obliga al navegador a procesar el cambio de posición YA)
-            void userPanel.offsetWidth;
-
-            // B. FASE APARICIÓN: Ahora que está en su sitio, encendemos la luz
-            userPanel.style.transition = 'opacity 0.6s ease';
-
-            // Usamos Doble RequestAnimationFrame para asegurar que el frame invisible ya pasó
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    userPanel.style.opacity = '1';
-                });
-            });
-
-        } else {
-            // B. YA ERA VISIBLE: Si por alguna razón extraña ya estaba visible pero en mal lugar
-            if (userPanel.style.left !== targetLeft) {
-                userPanel.style.opacity = '0';
-                setTimeout(() => {
-                    userPanel.style.transition = 'none';
-                    userPanel.style.left = targetLeft;
-                    userPanel.style.transform = targetTransform;
-                    void userPanel.offsetWidth; // Reflow
-                    userPanel.style.transition = 'opacity 0.6s ease';
-                    requestAnimationFrame(() => userPanel.style.opacity = '1');
-                }, 300);
-            }
-        }
+        // 4. MOSTRAR
+        requestAnimationFrame(() => {
+            userPanel.style.opacity = '1';
+        });
     };
 
     const showApp = (user) => {
@@ -282,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
-    // --- PROCESAMIENTO PRINCIPAL ---
+    // --- PROCESAMIENTO PRINCIPAL (CORREGIDO: ALERTA SÍ, OCULTAR NO) ---
     async function handleUpload(file) {
         if (!currentUser) {
             Swal.fire({ icon: 'warning', title: 'Identifícate', text: 'Debes iniciar sesión para procesar canciones.' });
@@ -290,19 +255,52 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        showLoader("Analizando archivo...");
-
-        // 1. Ocultar panel (Fade out)
-        const p = document.getElementById('user-panel');
-        if (p) {
-            p.style.transition = 'opacity 0.3s ease';
-            p.style.opacity = '0';
-        }
-
         const dur = await getAudioDuration(file);
         const fmt = formatSelect.value;
+        const COST = 10;
+
+        // 1. CONFIRMACIÓN DE COSTO (Esto debe aparecer SÍ o SÍ)
+        const confirmResult = await Swal.fire({
+            title: '¿Procesar Canción?',
+            text: `Esta operación consumirá ${COST} créditos de tu saldo.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: `Sí, pagar ${COST} créditos`,
+            cancelButtonText: 'Cancelar',
+            background: '#1a1a1a',
+            color: '#fff',
+            backdrop: true,
+            allowOutsideClick: false
+        });
+
+        // 2. SI CANCELA, PARAMOS
+        if (!confirmResult.isConfirmed) {
+            fileInput.value = '';
+            return;
+        }
+
+        // 3. INICIO DE PROCESO (Sin ocultar el panel)
+        showLoader("Analizando archivo...");
+
+        // ** ELIMINADO: Ya no ocultamos el user-panel **
+        // const p = document.getElementById('user-panel');
+        // if(p) p.style.opacity = '0'; 
 
         loaderText.textContent = `Procesando: ${file.name}`;
+
+        // Advertencia visual
+        if (!document.getElementById('warn-text')) {
+            const warn = document.createElement('p');
+            warn.id = 'warn-text';
+            warn.style.color = '#ff4081';
+            warn.style.fontSize = '0.8rem';
+            warn.style.marginTop = '10px';
+            warn.textContent = '⚠️ No cierres esta pestaña o perderás tus créditos.';
+            loaderText.after(warn);
+        }
+
         startProgressTimer(estimateProcessingTime(dur, fmt));
 
         const fd = new FormData();
@@ -328,24 +326,38 @@ document.addEventListener('DOMContentLoaded', () => {
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
 
-            // 2. Al llamar esto, el panel usará la lógica "Fase Fantasma" para aparecer en su sitio sin saltos
+            // Actualizar créditos visuales
             updateHeaderWithUser(currentUser);
+
+            const Toast = Swal.mixin({
+                toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1a1a', color: '#fff'
+            });
+            Toast.fire({ icon: 'success', title: `¡Listo! -${COST} créditos` });
 
         } catch (e) {
             console.error(e);
             stopProgressTimer();
-            const p = document.getElementById('user-panel');
-            if (p) p.style.opacity = '1';
 
             let title = '¡Ups!';
-            if (e.message.includes('saldo') || e.message.includes('créditos')) title = 'Saldo Insuficiente';
-            Swal.fire({ icon: 'error', title: title, text: e.message || 'Error desconocido', confirmButtonText: 'Entendido' });
+            let text = e.message || 'Error desconocido';
+            if (e.message.includes('saldo') || e.message.includes('créditos')) {
+                title = 'Saldo Insuficiente';
+                text = 'No tienes suficientes créditos.';
+            }
+            Swal.fire({ icon: 'error', title: title, text: text, confirmButtonText: 'Entendido' });
             resetUI();
         }
     }
 
     function showLoader(txt) { loaderText.textContent = txt; transitionViews(uploadUi, loader); }
-    function resetUI() { loader.classList.add('hidden'); progressBarContainer.style.display = 'none'; uploadUi.classList.remove('hidden'); fileInput.value = ''; }
+    function resetUI() {
+        loader.classList.add('hidden');
+        progressBarContainer.style.display = 'none';
+        uploadUi.classList.remove('hidden');
+        fileInput.value = '';
+        const w = document.getElementById('warn-text');
+        if (w) w.remove();
+    }
 
     function initDAW(files, name, zip, inst, bpm, key, isSaved = false) {
         const safeName = name ? name.replace(/\.[^/.]+$/, "") : "Mix";
@@ -383,6 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
             uploadUi.classList.add('hidden');
             glassCard.classList.add('expanded');
 
+            // Re-renderizamos el panel para asegurar posición
             if (currentUser) updateHeaderWithUser(currentUser);
         });
 
@@ -461,15 +474,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
 
-        // Ocultar antes de mover
-        const p = document.getElementById('user-panel');
-        if (p) p.style.opacity = '0';
-
         transitionViews(resultsArea, uploadUi, () => {
             appHeaderElement.classList.remove('hidden'); glassCard.classList.remove('expanded');
             tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); }); tracks = []; resultsArea.innerHTML = '';
             resetUI(); currentSongData = null;
-            // Al resetear, volverá al centro con la lógica anti-parpadeo
             if (currentUser) updateHeaderWithUser(currentUser);
         });
     }

@@ -1,10 +1,10 @@
 import { authService } from '../services/authService.js';
 
 export class AuthComponent {
-    constructor(container, onLoginSuccess, onSkip) {
+    constructor(container, onLoginSuccess) {
         this.container = container;
         this.onLoginSuccess = onLoginSuccess;
-        this.onSkip = onSkip;
+        // Ya no necesitamos onSkip porque no hay modo invitado
         this.isLoginMode = true;
         this.render();
     }
@@ -51,7 +51,6 @@ export class AuthComponent {
             </div>
         ` : '';
 
-        // Link de "Olvidé contraseña" solo en Login
         const forgotPassLink = this.isLoginMode ? `
             <div style="text-align: right; margin-bottom: 20px; margin-top: -15px;">
                 <a href="#" id="btn-forgot-pass" style="color: #888; font-size: 0.8rem; text-decoration: none;">¿Olvidaste tu contraseña?</a>
@@ -99,30 +98,22 @@ export class AuthComponent {
                 <div class="auth-toggle" id="btn-toggle-mode">
                     ${toggleText}
                 </div>
-
-                <div class="divider"><span>O</span></div>
-                <button id="btn-guest" class="btn-secondary full-width">
-                    Continuar como Invitado
-                </button>
-            </div>
+                
+                </div>
         `;
     }
 
     addEventListeners() {
         const form = this.container.querySelector('#auth-form');
         const toggleBtn = this.container.querySelector('#btn-toggle-mode');
-        const guestBtn = this.container.querySelector('#btn-guest');
         const submitBtn = this.container.querySelector('#btn-submit');
         const forgotBtn = this.container.querySelector('#btn-forgot-pass');
         const googleBtn = this.container.querySelector('#btn-google');
 
-        // --- LISTENER GOOGLE (BLINDADO CONTRA ERRORES) ---
+        // --- GOOGLE LOGIN ---
         if (googleBtn) {
             googleBtn.addEventListener('click', async () => {
-                // 1. Evitar doble clic
                 if (googleBtn.disabled) return;
-
-                // 2. Deshabilitar visualmente
                 googleBtn.disabled = true;
                 googleBtn.style.opacity = '0.5';
                 googleBtn.style.cursor = 'wait';
@@ -132,20 +123,14 @@ export class AuthComponent {
                     this.onLoginSuccess(user);
                 } catch (error) {
                     console.error("Error Auth Google:", error);
+                    if (error.code === 'auth/cancelled-popup-request') return;
 
-                    // 3. Manejo de errores específicos
-                    if (error.code === 'auth/cancelled-popup-request') {
-                        // Ignoramos conflicto de popups múltiples
-                        return;
-                    }
-                    if (error.code === 'auth/popup-closed-by-user') {
-                        this.showError("Has cancelado el inicio de sesión.");
-                    } else {
-                        const msg = typeof error === 'string' ? error : "No se pudo iniciar con Google.";
-                        this.showError(msg);
-                    }
+                    const msg = error.code === 'auth/popup-closed-by-user'
+                        ? "Has cancelado el inicio de sesión."
+                        : (typeof error === 'string' ? error : "No se pudo iniciar con Google.");
+
+                    this.showError(msg);
                 } finally {
-                    // 4. Reactivar botón siempre
                     googleBtn.disabled = false;
                     googleBtn.style.opacity = '1';
                     googleBtn.style.cursor = 'pointer';
@@ -153,11 +138,10 @@ export class AuthComponent {
             });
         }
 
-        // LÓGICA OLVIDÉ CONTRASEÑA
+        // --- OLVIDÉ CONTRASEÑA ---
         if (forgotBtn) {
             forgotBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
-
                 const { value: email } = await Swal.fire({
                     title: 'Recuperar contraseña',
                     input: 'email',
@@ -177,26 +161,22 @@ export class AuthComponent {
                         Swal.fire({
                             icon: 'success',
                             title: '¡Enviado!',
-                            text: 'Revisa tu bandeja de entrada para restablecer tu contraseña.',
-                            background: '#1a1a1a',
-                            color: '#fff',
-                            timer: 3000,
-                            showConfirmButton: false
+                            text: 'Revisa tu bandeja de entrada.',
+                            background: '#1a1a1a', color: '#fff', timer: 3000, showConfirmButton: false
                         });
                     } catch (error) {
                         Swal.fire({
                             icon: 'error',
                             title: 'Error',
                             text: typeof error === 'string' ? error : 'No se pudo enviar el correo.',
-                            background: '#1a1a1a',
-                            color: '#fff'
+                            background: '#1a1a1a', color: '#fff'
                         });
                     }
                 }
             });
         }
 
-        // LÓGICA LOGIN / REGISTRO NORMAL
+        // --- LOGIN / REGISTRO ---
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             this.container.querySelector('#auth-error-msg').classList.add('hidden');
@@ -219,12 +199,27 @@ export class AuthComponent {
             try {
                 let user;
                 if (this.isLoginMode) {
+                    // LOGIN
                     user = await authService.login(emailOrUser, password);
                 } else {
+                    // REGISTRO
                     const username = form.querySelector('#username').value.trim();
                     user = await authService.register(emailOrUser, password, username);
+
+                    // --- AQUÍ ESTÁ EL AVISO NUEVO ---
+                    await Swal.fire({
+                        icon: 'info',
+                        title: '¡Cuenta Creada!',
+                        html: `Hemos enviado un correo a <b>${emailOrUser}</b>.<br>Por favor verifícalo para asegurar tu cuenta.`,
+                        confirmButtonText: 'Entendido',
+                        background: '#1a1a1a',
+                        color: '#fff',
+                        confirmButtonColor: '#00E676'
+                    });
                 }
+
                 this.onLoginSuccess(user);
+
             } catch (error) {
                 const message = typeof error === 'string' ? error : (error.message || "Error desconocido");
                 this.showError(message);
@@ -234,13 +229,6 @@ export class AuthComponent {
         });
 
         toggleBtn.addEventListener('click', () => this.switchMode(!this.isLoginMode));
-
-        if (guestBtn) {
-            guestBtn.addEventListener('click', () => {
-                this.container.querySelector('.auth-card').classList.add('fade-out');
-                setTimeout(() => this.onSkip(), 300);
-            });
-        }
     }
 
     showError(msg) {
