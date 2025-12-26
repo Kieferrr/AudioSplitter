@@ -4,6 +4,7 @@ import { AuthComponent } from './components/AuthComponent.js';
 import { dbService } from './services/dbService.js';
 import { LibraryModal } from './components/LibraryModal.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { CustomModal } from './components/CustomModal.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -11,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const appContainer = document.getElementById('app-container');
     const glassCard = document.querySelector('.glass-card');
     let currentUser = null;
+    let userUnsubscribe = null; // Para manejar la escucha en tiempo real
 
     if (glassCard) glassCard.style.position = 'relative';
 
@@ -54,114 +56,161 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO (SIN ANIMACIONES RARAS, SOLO APARECE Y YA) ---
-    const updateHeaderWithUser = async (user) => {
+    // --- HEADER USUARIO (TRANSICIÓN "POP" RESTAURADA) ---
+    const updateHeaderWithUser = (user) => {
+
+        // 1. Limpiar escucha anterior
+        if (userUnsubscribe) {
+            userUnsubscribe();
+            userUnsubscribe = null;
+        }
 
         let userPanel = document.getElementById('user-panel');
-        let isNew = false;
 
-        // 1. CREAR SI NO EXISTE
+        // 2. Determinar posición según estado (Expandido o no)
+        const isExpanded = glassCard.classList.contains('expanded');
+        const targetLeft = isExpanded ? '25px' : '50%';
+        const targetTranslateX = isExpanded ? '0' : '-50%';
+
+        // 3. CREACIÓN INICIAL (Si no existe)
         if (!userPanel) {
-            isNew = true;
             userPanel = document.createElement('div');
             userPanel.id = 'user-panel';
             userPanel.style.display = 'flex';
             userPanel.style.alignItems = 'center';
             userPanel.style.whiteSpace = 'nowrap';
-
-            // ESTILOS CÁPSULA
             userPanel.style.background = 'rgba(255, 255, 255, 0.08)';
             userPanel.style.backdropFilter = 'blur(12px)';
             userPanel.style.border = '1px solid rgba(255, 255, 255, 0.1)';
             userPanel.style.borderRadius = '50px';
             userPanel.style.padding = '6px 16px';
             userPanel.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-
             userPanel.style.position = 'absolute';
             userPanel.style.top = '25px';
             userPanel.style.zIndex = '10';
 
-            // Transición suave SOLO para opacidad (aparecer)
-            userPanel.style.transition = 'opacity 0.4s ease';
+            // ESTADO INICIAL OCULTO (Para la animación "Pop")
             userPanel.style.opacity = '0';
+            userPanel.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)'; // Rebote suave
+
+            // Posición inicial (pero escalado pequeño para que se agrande luego)
+            userPanel.style.left = targetLeft;
+            userPanel.style.transform = `translateX(${targetTranslateX}) scale(0.8)`;
 
             glassCard.appendChild(userPanel);
-        }
-
-        // 2. POSICIONAMIENTO FIJO (Siempre a la izquierda si está expandido, centro si no)
-        const isExpanded = glassCard.classList.contains('expanded');
-
-        // Para evitar saltos, movemos instantáneamente
-        userPanel.style.transition = 'none'; // Quitamos transición de movimiento
-
-        if (isExpanded) {
-            userPanel.style.left = '25px';
-            userPanel.style.transform = 'translateX(0)';
         } else {
-            userPanel.style.left = '50%';
-            userPanel.style.transform = 'translateX(-50%)';
+            // Si ya existe, actualizamos posición suavemente
+            userPanel.style.left = targetLeft;
+            // Mantenemos escala 1 si ya es visible
+            const currentOpacity = window.getComputedStyle(userPanel).opacity;
+            const scale = currentOpacity === '0' ? 0.8 : 1;
+            userPanel.style.transform = `translateX(${targetTranslateX}) scale(${scale})`;
         }
 
-        // Forzamos al navegador a aplicar la posición YA
-        void userPanel.offsetWidth;
-
-        // Reactivamos transición solo para el Fade In
-        userPanel.style.transition = 'opacity 0.4s ease';
-
-        // 3. LLENAR DATOS
         if (user) {
-            let finalDisplayName = user.displayName || "Usuario";
-            let credits = 0;
-            try {
-                const dbData = await authService.getUserData(user.uid);
+            // 4. SUSCRIPCIÓN (ESCUCHAR DATOS)
+            userUnsubscribe = authService.subscribeToUser(user.uid, (dbData) => {
+
+                let finalDisplayName = user.displayName || "Usuario";
+                let credits = 0;
+                let isAdmin = false;
+
                 if (dbData) {
                     if (dbData.username || dbData.displayName) finalDisplayName = dbData.username || dbData.displayName;
                     credits = dbData.credits !== undefined ? dbData.credits : 0;
+                    if (dbData.role === 'admin') isAdmin = true;
                 }
-            } catch (e) { console.warn(e); }
 
-            userPanel.innerHTML = `
-            <button id="btnLibrary" class="header-btn">
-                <span class="material-icons">library_music</span> Mis Canciones
-            </button>
-            <div class="v-divider"></div>
-            <div style="display: flex; flex-direction: column; align-items: flex-start; margin-right: 5px;">
-                <span class="user-email" style="font-weight: 600; line-height: 1.1;">${finalDisplayName}</span>
-                <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">${credits} créditos</span>
-            </div>
-            <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
-                <span class="material-icons">settings</span>
-            </button>
-            <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 5px;">
-                <span class="material-icons">logout</span>
-            </button>
-            `;
+                // Renderizamos contenido (Aún invisible si es la primera carga)
+                const adminBtnHTML = isAdmin ? `
+                <button id="btnAdmin" class="header-btn" style="margin-right: 10px; color: #ffeb3b;" title="Panel Admin">
+                    <span class="material-icons">admin_panel_settings</span>
+                </button>
+                <div class="v-divider"></div>
+                ` : '';
 
-            const btnLogout = userPanel.querySelector('#btnLogout');
-            if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
-            const btnLibrary = userPanel.querySelector('#btnLibrary');
-            if (btnLibrary) btnLibrary.onclick = () => {
-                new LibraryModal(user.uid, (songData) => {
-                    resetApplication();
-                    setTimeout(() => {
-                        currentSongData = songData;
-                        initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
-                    }, 350);
+                userPanel.innerHTML = `
+                ${adminBtnHTML}
+                <button id="btnLibrary" class="header-btn">
+                    <span class="material-icons">library_music</span> Mis Canciones
+                </button>
+                <div class="v-divider"></div>
+                <div style="display: flex; flex-direction: column; align-items: flex-start; margin-right: 5px;">
+                    <span class="user-email" style="font-weight: 600; line-height: 1.1;">${finalDisplayName}</span>
+                    <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">
+                        ${credits} créditos
+                    </span>
+                </div>
+                <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
+                    <span class="material-icons">settings</span>
+                </button>
+                <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 5px;">
+                    <span class="material-icons">logout</span>
+                </button>
+                `;
+
+                asignarEventosPanel(userPanel, user);
+
+                // 5. DISPARAR ANIMACIÓN DE ENTRADA (SOLO AHORA QUE HAY DATOS)
+                // Usamos requestAnimationFrame para asegurar que el DOM ya pintó el texto
+                requestAnimationFrame(() => {
+                    userPanel.style.opacity = '1';
+                    userPanel.style.transform = `translateX(${targetTranslateX}) scale(1)`; // ¡SE AGRANDA!
                 });
-            };
-            const btnSettings = userPanel.querySelector('#btnSettings');
-            if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
+            });
 
         } else {
-            // Caso raro, no debería pasar porque bloqueamos invitados, pero por seguridad
             userPanel.innerHTML = `<span class="user-email" style="color: #aaa;">Invitado</span>`;
+            requestAnimationFrame(() => {
+                userPanel.style.opacity = '1';
+                userPanel.style.transform = `translateX(${targetTranslateX}) scale(1)`;
+            });
+        }
+    };
+
+    function asignarEventosPanel(panel, user) {
+        const btnAdmin = panel.querySelector('#btnAdmin');
+        if (btnAdmin) {
+            btnAdmin.onclick = async () => {
+                // Lógica de Admin Simplificada para recargar créditos
+                const { value: formValues } = await Swal.fire({
+                    title: '⚡ Recargar Créditos',
+                    html: '<input id="swal-input1" class="swal2-input" placeholder="Correo"><input id="swal-input2" type="number" class="swal2-input" placeholder="Cantidad">',
+                    focusConfirm: false,
+                    background: '#1a1a1a', color: '#fff',
+                    preConfirm: () => [document.getElementById('swal-input1').value, document.getElementById('swal-input2').value]
+                });
+                if (formValues && formValues[0]) {
+                    try {
+                        const token = await user.getIdToken();
+                        await fetch('/api/admin/add-credits', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ targetEmail: formValues[0], amount: formValues[1] })
+                        });
+                        CustomModal.toast('Recarga exitosa', 'success');
+                    } catch (e) { CustomModal.alert('Error', e.message); }
+                }
+            };
         }
 
-        // 4. MOSTRAR
-        requestAnimationFrame(() => {
-            userPanel.style.opacity = '1';
-        });
-    };
+        const btnLogout = panel.querySelector('#btnLogout');
+        if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
+
+        const btnLibrary = panel.querySelector('#btnLibrary');
+        if (btnLibrary) btnLibrary.onclick = () => {
+            new LibraryModal(user.uid, (songData) => {
+                resetApplication();
+                setTimeout(() => {
+                    currentSongData = songData;
+                    initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
+                }, 350);
+            });
+        };
+
+        const btnSettings = panel.querySelector('#btnSettings');
+        if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
+    }
 
     const showApp = (user) => {
         if (!appContainer.classList.contains('hidden') && currentUser?.uid === user.uid) return;
@@ -173,6 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showLogin = () => {
         currentUser = null;
+        if (userUnsubscribe) { userUnsubscribe(); userUnsubscribe = null; }
+
         if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) return;
         transitionViews(appContainer, authContainer, () => {
             resetApplication();
@@ -180,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const p = document.getElementById('user-panel');
             if (p) {
-                p.style.opacity = '0';
+                p.style.opacity = '0'; // Se desvanece al salir
                 setTimeout(() => p.remove(), 300);
             }
 
@@ -247,11 +298,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
-    // --- PROCESAMIENTO PRINCIPAL (CORREGIDO: ALERTA SÍ, OCULTAR NO) ---
     async function handleUpload(file) {
         if (!currentUser) {
-            Swal.fire({ icon: 'warning', title: 'Identifícate', text: 'Debes iniciar sesión para procesar canciones.' });
-            showLogin();
+            CustomModal.alert('Identifícate', 'Debes iniciar sesión para procesar canciones.', 'Iniciar Sesión')
+                .then(() => showLogin());
             return;
         }
 
@@ -259,38 +309,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const fmt = formatSelect.value;
         const COST = 10;
 
-        // 1. CONFIRMACIÓN DE COSTO (Esto debe aparecer SÍ o SÍ)
-        const confirmResult = await Swal.fire({
-            title: '¿Procesar Canción?',
-            text: `Esta operación consumirá ${COST} créditos de tu saldo.`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: `Sí, pagar ${COST} créditos`,
-            cancelButtonText: 'Cancelar',
-            background: '#1a1a1a',
-            color: '#fff',
-            backdrop: true,
-            allowOutsideClick: false
-        });
+        const userAccepted = await CustomModal.confirm(
+            '¿Procesar Canción?',
+            `Esta acción consumirá <b>${COST} créditos</b> de tu saldo. <br><span style="font-size:0.9em; color:#888;">Asegúrate de no cerrar la pestaña.</span>`,
+            `Pagar ${COST} Créditos`,
+            'Cancelar'
+        );
 
-        // 2. SI CANCELA, PARAMOS
-        if (!confirmResult.isConfirmed) {
+        if (!userAccepted) {
             fileInput.value = '';
             return;
         }
 
-        // 3. INICIO DE PROCESO (Sin ocultar el panel)
         showLoader("Analizando archivo...");
-
-        // ** ELIMINADO: Ya no ocultamos el user-panel **
-        // const p = document.getElementById('user-panel');
-        // if(p) p.style.opacity = '0'; 
-
         loaderText.textContent = `Procesando: ${file.name}`;
 
-        // Advertencia visual
         if (!document.getElementById('warn-text')) {
             const warn = document.createElement('p');
             warn.id = 'warn-text';
@@ -326,13 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
             stopProgressTimer();
             initDAW(data.files, data.originalName, data.zip, data.instrumental, data.bpm, data.key, false);
 
-            // Actualizar créditos visuales
-            updateHeaderWithUser(currentUser);
-
-            const Toast = Swal.mixin({
-                toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1a1a', color: '#fff'
-            });
-            Toast.fire({ icon: 'success', title: `¡Listo! -${COST} créditos` });
+            CustomModal.toast(`¡Listo! Se descontaron ${COST} créditos`, 'success');
 
         } catch (e) {
             console.error(e);
@@ -344,7 +371,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 title = 'Saldo Insuficiente';
                 text = 'No tienes suficientes créditos.';
             }
-            Swal.fire({ icon: 'error', title: title, text: text, confirmButtonText: 'Entendido' });
+
+            CustomModal.alert(title, text, 'Entendido');
             resetUI();
         }
     }
@@ -394,23 +422,23 @@ document.addEventListener('DOMContentLoaded', () => {
             appHeaderElement.classList.add('hidden');
             uploadUi.classList.add('hidden');
             glassCard.classList.add('expanded');
-
-            // Re-renderizamos el panel para asegurar posición
             if (currentUser) updateHeaderWithUser(currentUser);
         });
 
         setTimeout(() => {
             document.getElementById('btnReset').onclick = resetApplication;
+
             if (document.getElementById('btnSaveToCloud')) {
                 document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
                     const b = e.currentTarget, orig = b.innerHTML;
                     b.disabled = true; b.innerHTML = '<span class="material-icons icon-spin">sync</span> ...';
                     try {
                         await dbService.saveSong(currentUser.uid, currentSongData);
-                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Guardado', showConfirmButton: false, timer: 2000, background: '#1a1a1a', color: '#fff' });
+                        CustomModal.toast('Canción guardada en tu biblioteca', 'success');
                         b.remove();
                     } catch (e) {
-                        Swal.fire({ icon: 'error', text: e.message }); b.disabled = false; b.innerHTML = orig;
+                        CustomModal.alert('Error al guardar', e.message);
+                        b.disabled = false; b.innerHTML = orig;
                     }
                 });
             }

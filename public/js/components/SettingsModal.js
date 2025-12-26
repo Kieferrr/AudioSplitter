@@ -1,107 +1,74 @@
 import { authService } from '../services/authService.js';
-import { dbService } from '../services/dbService.js';
+import { CustomModal } from './CustomModal.js';
 
 export class SettingsModal {
     constructor(user, onLogout) {
         this.user = user;
-        this.onLogout = onLogout; // Callback para sacar al usuario a la pantalla de login
+        this.onLogout = onLogout;
         this.render();
     }
 
     render() {
-        // Usamos SweetAlert como menú de opciones (se ve muy bien y ahorra código HTML)
-        Swal.fire({
-            title: 'Ajustes de Cuenta',
-            html: `
-                <div style="text-align: left; margin-top: 10px;">
-                    <p style="color: #aaa; font-size: 0.9rem; margin-bottom: 5px;">Usuario</p>
-                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; color: white; margin-bottom: 20px;">
-                        ${this.user.displayName || 'Usuario'} <br>
-                        <span style="font-size: 0.8rem; color: #666;">${this.user.email}</span>
-                    </div>
-                    
-                    <button id="btn-delete-account" class="swal2-confirm swal2-styled" style="background: #2a1a1a !important; border: 1px solid #ff5252 !important; color: #ff5252 !important; width: 100%; margin: 0;">
-                        <span class="material-icons" style="vertical-align: middle; font-size: 18px; margin-right: 5px;">delete_forever</span>
-                        Eliminar Cuenta
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+
+        overlay.innerHTML = `
+            <div class="modal-glass-card" style="max-width: 450px; text-align: left;">
+                <div class="modal-title" style="text-align: center; margin-bottom: 25px;">Ajustes de Cuenta</div>
+                
+                <div style="margin-bottom: 30px;">
+                    <label style="display:block; color:#aaa; font-size:0.85rem; margin-bottom:8px; font-weight:500;">Correo Electrónico</label>
+                    <input type="text" value="${this.user.email}" disabled 
+                        style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid #333; color: #fff; border-radius: 10px; font-size: 1rem;">
+                </div>
+
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 25px; margin-top: 25px;">
+                    <div style="color: #FF5252; font-weight: bold; margin-bottom: 10px; font-size: 0.9rem;">Zona de Peligro</div>
+                    <p style="color: #888; font-size: 0.85rem; margin-bottom: 15px; line-height: 1.4;">
+                        Al eliminar tu cuenta, tus datos personales desaparecerán. <br>
+                        <b>Nota:</b> Si vuelves a registrarte con este correo, recuperarás tu saldo actual (incluso si es 0).
+                    </p>
+                    <button id="btnDeleteAccount" class="modal-btn" style="background: rgba(255, 82, 82, 0.1); color: #FF5252; border: 1px solid rgba(255, 82, 82, 0.3); width: 100%;">
+                        Eliminar mi cuenta
                     </button>
                 </div>
-            `,
-            showConfirmButton: false, // Ocultamos el OK por defecto
-            showCloseButton: true,
-            background: '#1a1a1a',
-            color: '#fff',
-            didOpen: () => {
-                // Asignamos el evento al botón HTML que inyectamos
-                const btnDelete = document.getElementById('btn-delete-account');
-                btnDelete.addEventListener('click', () => this.handleDelete());
-            }
-        });
-    }
 
-    async handleDelete() {
-        // 1. Confirmación de seguridad
-        const result = await Swal.fire({
-            title: '¿Estás completamente seguro?',
-            text: "Se borrarán todas tus canciones y datos. Esta acción no se puede deshacer.",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, borrar todo',
-            cancelButtonText: 'Cancelar',
-            background: '#1a1a1a',
-            color: '#fff'
-        });
+                <button id="btnCloseSettings" class="modal-btn" style="margin-top: 20px; width: 100%; background: #fff; color: #000; font-weight:700;">
+                    Cerrar
+                </button>
+            </div>
+        `;
 
-        if (result.isConfirmed) {
-            Swal.fire({
-                title: 'Eliminando...',
-                text: 'Borrando tus datos y archivos.',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                },
-                background: '#1a1a1a',
-                color: '#fff'
-            });
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('active'));
 
-            try {
-                // Paso 1: Borrar datos de Firestore y Storage
-                await dbService.deleteUserAccountData(this.user.uid);
+        const close = () => {
+            overlay.classList.remove('active');
+            setTimeout(() => overlay.remove(), 300);
+        };
+        overlay.querySelector('#btnCloseSettings').onclick = close;
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
-                // Paso 2: Borrar usuario de Auth
-                await authService.deleteAccount();
+        const btnDel = overlay.querySelector('#btnDeleteAccount');
+        btnDel.onclick = async () => {
+            const confirmed = await CustomModal.confirm(
+                '¿Eliminar Cuenta?',
+                'Se borrarán tus canciones guardadas, pero mantendremos tu historial de créditos por si decides volver.',
+                'Sí, eliminar',
+                'Cancelar'
+            );
 
-                // Paso 3: Éxito y Logout
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Cuenta eliminada',
-                    text: 'Lamentamos verte partir.',
-                    timer: 2000,
-                    showConfirmButton: false,
-                    background: '#1a1a1a',
-                    color: '#fff'
-                }).then(() => {
-                    this.onLogout(); // Redirigir al login
-                });
-
-            } catch (error) {
-                console.error(error);
-                let msg = "No se pudo borrar la cuenta.";
-                
-                // Si el usuario lleva mucho tiempo logueado, Firebase pide re-autenticación
-                if (error.code === 'auth/requires-recent-login') {
-                    msg = "Por seguridad, necesitas cerrar sesión e iniciar de nuevo para poder borrar tu cuenta.";
+            if (confirmed) {
+                try {
+                    await authService.deleteAccount();
+                    close();
+                    CustomModal.toast('Cuenta eliminada.', 'info');
+                    if (this.onLogout) this.onLogout();
+                } catch (error) {
+                    console.error(error);
+                    CustomModal.alert('No se pudo eliminar', error.message || error);
                 }
-
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: msg,
-                    background: '#1a1a1a',
-                    color: '#fff'
-                });
             }
-        }
+        };
     }
 }

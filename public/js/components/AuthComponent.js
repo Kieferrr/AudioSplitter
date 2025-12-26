@@ -1,10 +1,10 @@
 import { authService } from '../services/authService.js';
+import { CustomModal } from './CustomModal.js';
 
 export class AuthComponent {
     constructor(container, onLoginSuccess) {
         this.container = container;
         this.onLoginSuccess = onLoginSuccess;
-        // Ya no necesitamos onSkip porque no hay modo invitado
         this.isLoginMode = true;
         this.render();
     }
@@ -35,7 +35,12 @@ export class AuthComponent {
         const toggleText = this.isLoginMode
             ? '¿No tienes cuenta? <span class="link-highlight">Regístrate</span>'
             : '¿Ya tienes cuenta? <span class="link-highlight">Inicia sesión</span>';
+
+        // CORRECCIÓN 1: Placeholder explícito
         const loginPlaceholder = this.isLoginMode ? "Correo o Usuario" : "Correo electrónico";
+
+        // CORRECCIÓN 2: Input type text en login para permitir usuarios sin @
+        const inputType = this.isLoginMode ? "text" : "email";
 
         const registerFields = !this.isLoginMode ? `
             <div class="input-group fade-in">
@@ -69,7 +74,7 @@ export class AuthComponent {
 
                     <div class="input-group">
                         <span class="material-icons">email</span>
-                        <input type="text" id="email" placeholder="${loginPlaceholder}" required autocomplete="email">
+                        <input type="${inputType}" id="email" placeholder="${loginPlaceholder}" required autocomplete="email">
                     </div>
                     
                     <div class="input-group">
@@ -98,8 +103,7 @@ export class AuthComponent {
                 <div class="auth-toggle" id="btn-toggle-mode">
                     ${toggleText}
                 </div>
-                
-                </div>
+            </div>
         `;
     }
 
@@ -110,7 +114,6 @@ export class AuthComponent {
         const forgotBtn = this.container.querySelector('#btn-forgot-pass');
         const googleBtn = this.container.querySelector('#btn-google');
 
-        // --- GOOGLE LOGIN ---
         if (googleBtn) {
             googleBtn.addEventListener('click', async () => {
                 if (googleBtn.disabled) return;
@@ -138,50 +141,30 @@ export class AuthComponent {
             });
         }
 
-        // --- OLVIDÉ CONTRASEÑA ---
         if (forgotBtn) {
             forgotBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
-                const { value: email } = await Swal.fire({
-                    title: 'Recuperar contraseña',
-                    input: 'email',
-                    inputLabel: 'Ingresa tu correo registrado',
-                    inputPlaceholder: 'tu@correo.com',
-                    showCancelButton: true,
-                    confirmButtonText: 'Enviar enlace',
-                    cancelButtonText: 'Cancelar',
-                    background: '#1a1a1a',
-                    color: '#fff',
-                    confirmButtonColor: '#7c4dff'
-                });
+                const emailVal = form.email.value.trim().toLowerCase();
 
-                if (email) {
-                    try {
-                        await authService.sendPasswordReset(email);
-                        Swal.fire({
-                            icon: 'success',
-                            title: '¡Enviado!',
-                            text: 'Revisa tu bandeja de entrada.',
-                            background: '#1a1a1a', color: '#fff', timer: 3000, showConfirmButton: false
-                        });
-                    } catch (error) {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error',
-                            text: typeof error === 'string' ? error : 'No se pudo enviar el correo.',
-                            background: '#1a1a1a', color: '#fff'
-                        });
-                    }
+                if (!emailVal || !emailVal.includes('@')) {
+                    CustomModal.alert('Recuperar Contraseña', 'Por favor, escribe tu correo en el campo de "Correo electrónico" y vuelve a pulsar este enlace.');
+                    return;
+                }
+
+                try {
+                    await authService.sendPasswordReset(emailVal);
+                    CustomModal.alert('¡Enviado!', `Hemos enviado un enlace de recuperación a ${emailVal}`);
+                } catch (error) {
+                    CustomModal.alert('Error', 'No se pudo enviar el correo. Verifica que esté bien escrito.');
                 }
             });
         }
 
-        // --- LOGIN / REGISTRO ---
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             this.container.querySelector('#auth-error-msg').classList.add('hidden');
 
-            const emailOrUser = form.email.value.trim();
+            const emailOrUser = form.email.value.trim(); // NO hacemos toLowerCase aquí para el usuario aún
             const password = form.password.value;
 
             if (!this.isLoginMode) {
@@ -199,23 +182,18 @@ export class AuthComponent {
             try {
                 let user;
                 if (this.isLoginMode) {
-                    // LOGIN
+                    // Login: Pasamos el input tal cual, el service se encarga de las minúsculas
                     user = await authService.login(emailOrUser, password);
                 } else {
-                    // REGISTRO
+                    // Registro
                     const username = form.querySelector('#username').value.trim();
                     user = await authService.register(emailOrUser, password, username);
 
-                    // --- AQUÍ ESTÁ EL AVISO NUEVO ---
-                    await Swal.fire({
-                        icon: 'info',
-                        title: '¡Cuenta Creada!',
-                        html: `Hemos enviado un correo a <b>${emailOrUser}</b>.<br>Por favor verifícalo para asegurar tu cuenta.`,
-                        confirmButtonText: 'Entendido',
-                        background: '#1a1a1a',
-                        color: '#fff',
-                        confirmButtonColor: '#00E676'
-                    });
+                    await CustomModal.alert(
+                        '¡Cuenta Creada!',
+                        `Hemos enviado un correo a <b>${emailOrUser}</b>.<br>Verifícalo para asegurar tu cuenta.`,
+                        'Entendido'
+                    );
                 }
 
                 this.onLoginSuccess(user);

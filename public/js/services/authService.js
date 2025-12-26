@@ -21,102 +21,102 @@ import {
     collection,
     query,
     where,
-    getDocs
+    getDocs,
+    onSnapshot // <--- IMPORTANTE: NECESARIO PARA TIEMPO REAL
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { dbService } from './dbService.js';
 
 export const authService = {
 
     // --- REGISTRO ---
     async register(email, password, username) {
         try {
-            const q = query(collection(db, "users"), where("username", "==", username));
+            const safeEmail = email.toLowerCase();
+            const usernameKey = username.toLowerCase();
+
+            const q = query(collection(db, "users"), where("usernameLower", "==", usernameKey));
             const querySnapshot = await getDocs(q);
+
             if (!querySnapshot.empty) {
                 throw { code: 'custom/username-taken' };
             }
 
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, safeEmail, password);
             let user = userCredential.user;
 
             await updateProfile(user, { displayName: username });
             await user.reload();
             user = auth.currentUser;
 
-            // Al registrarse, pasamos el flag isNew = true
             await this.saveUserToDB(user, username, true);
-            sendEmailVerification(user).catch(err => console.error("Error enviando verificación:", err));
+            sendEmailVerification(user).catch(err => console.error(err));
 
             return user;
         } catch (error) {
-            console.error("Error en registro:", error);
+            console.error("Error registro:", error);
             throw this.mapAuthError(error);
         }
     },
 
-    // --- LOGIN CON CORREO ---
+    // --- LOGIN BLINDADO ---
     async login(loginInput, password) {
         try {
-            let emailToUse = loginInput;
-            const isEmail = String(loginInput).toLowerCase().match(
-                /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
-            );
+            let emailToUse = loginInput.trim();
+            const isEmail = emailToUse.includes('@');
 
-            if (!isEmail) {
-                const q = query(collection(db, "users"), where("username", "==", loginInput));
-                const querySnapshot = await getDocs(q);
-                if (querySnapshot.empty) throw { code: 'auth/user-not-found' };
-                const userDoc = querySnapshot.docs[0].data();
+            if (isEmail) {
+                emailToUse = emailToUse.toLowerCase();
+            } else {
+                console.log(`🔍 Buscando usuario: "${loginInput}"...`);
+                const inputLower = loginInput.toLowerCase();
+                let q = query(collection(db, "users"), where("usernameLower", "==", inputLower));
+                let snapshot = await getDocs(q);
+
+                if (snapshot.empty) {
+                    console.log("⚠️ No encontrado por minúscula. Intentando legacy...");
+                    q = query(collection(db, "users"), where("username", "==", loginInput));
+                    snapshot = await getDocs(q);
+                }
+
+                if (snapshot.empty) throw { code: 'auth/user-not-found' };
+
+                const userDoc = snapshot.docs[0].data();
                 emailToUse = userDoc.email;
             }
 
             const userCredential = await signInWithEmailAndPassword(auth, emailToUse, password);
-            // En login normal, solo actualizamos fecha (isNew = false)
             await this.saveUserToDB(userCredential.user, null, false);
             return userCredential.user;
+
         } catch (error) {
-            console.error("Error en login:", error);
+            console.error("Error login:", error);
             throw this.mapAuthError(error);
         }
     },
 
-    // --- LOGIN CON GOOGLE ---
     async loginWithGoogle() {
         try {
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
-
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            // Sincronización silenciosa
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
 
             if (userSnap.exists()) {
-                // USUARIO EXISTENTE
-                const data = userSnap.data();
-                const dbName = data.username || data.displayName;
-
-                if (dbName && dbName !== user.displayName) {
-                    await updateProfile(user, { displayName: dbName });
-                }
-                // Actualizamos fecha (isNew = false)
                 await this.saveUserToDB(user, null, false);
             } else {
-                // USUARIO NUEVO
-                // Guardamos con nombre de Google y (isNew = true) para dar créditos
                 await this.saveUserToDB(user, user.displayName, true);
             }
-
             return auth.currentUser;
         } catch (error) {
-            console.error("Error Google Login:", error);
             if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') return null;
             throw this.mapAuthError(error);
         }
     },
 
-    // --- OBTENER DATOS REALES DE BD ---
+    // --- LEER DATOS (FETCH ÚNICO) ---
     async getUserData(uid) {
         try {
             const userRef = doc(db, "users", uid);
@@ -124,12 +124,29 @@ export const authService = {
             if (snap.exists()) return snap.data();
             return null;
         } catch (error) {
-            console.error("Error obteniendo datos usuario:", error);
             return null;
         }
     },
 
-    // --- UTILS ---
+    // --- NUEVO: ESCUCHAR DATOS (TIEMPO REAL) 📡 ---
+    // Esto arregla el problema de los 0 créditos
+    subscribeToUser(uid, callback) {
+        const userRef = doc(db, "users", uid);
+        // onSnapshot se queda escuchando cambios.
+        // Si al principio falla o es lento, se actualiza solo después.
+        const unsubscribe = onSnapshot(userRef, (doc) => {
+            if (doc.exists()) {
+                callback(doc.data());
+            } else {
+                callback(null);
+            }
+        }, (error) => {
+            console.error("Error escuchando usuario:", error);
+            callback(null);
+        });
+        return unsubscribe; // Devolvemos la función para "colgar" la llamada
+    },
+
     async sendPasswordReset(email) {
         try { await sendPasswordResetEmail(auth, email); }
         catch (error) { throw this.mapAuthError(error); }
@@ -137,94 +154,100 @@ export const authService = {
 
     async logout() {
         try { await signOut(auth); }
-        catch (error) { console.error("Error logout:", error); }
+        catch (error) { console.error(error); }
     },
 
-    // --- BORRAR CUENTA COMPLETA (DB + AUTH) ---
     async deleteAccount() {
         try {
             const user = auth.currentUser;
             if (user) {
-                // 1. Primero borramos sus datos en Firestore
-                const userRef = doc(db, "users", user.uid);
-                await deleteDoc(userRef);
+                const userData = await this.getUserData(user.uid);
+                const currentCredits = userData ? (userData.credits || 0) : 0;
 
-                // 2. Luego borramos su acceso (Auth)
+                if (user.email) {
+                    await setDoc(doc(db, "deleted_history", user.email.toLowerCase()), {
+                        credits: currentCredits,
+                        deletedAt: serverTimestamp(),
+                        lastUid: user.uid
+                    });
+                }
+                await dbService.deleteUserAccountData(user.uid);
                 await deleteUser(user);
             }
         } catch (error) {
-            console.error("Error borrando cuenta:", error);
-            // Si falla porque hace mucho que no se loguea, Firebase pide re-login
-            if (error.code === 'auth/requires-recent-login') {
-                throw "Por seguridad, debes cerrar sesión e iniciar de nuevo antes de borrar tu cuenta.";
-            }
+            console.error(error);
+            if (error.code === 'auth/requires-recent-login') throw "Por seguridad, debes cerrar sesión e iniciar de nuevo.";
             throw error;
         }
     },
 
-    // --- GUARDAR USUARIO EN FIRESTORE (ECONOMÍA Y ROLES) ---
     async saveUserToDB(user, username = null, isNewUser = false) {
         try {
             const userRef = doc(db, "users", user.uid);
+            const emailKey = user.email.toLowerCase();
 
             if (isNewUser) {
-                // --- CASO 1: USUARIO NUEVO (REGALAMOS CRÉDITOS) ---
+                let initialCredits = 100;
+                const historyRef = doc(db, "deleted_history", emailKey);
+                const historySnap = await getDoc(historyRef);
+
+                if (historySnap.exists()) {
+                    const historyData = historySnap.data();
+                    initialCredits = historyData.credits !== undefined ? historyData.credits : 0;
+                }
+
+                const visualName = username || user.displayName || "Usuario";
+
                 const newUserPayload = {
                     uid: user.uid,
-                    email: user.email,
-                    displayName: username || user.displayName,
-                    username: username || user.displayName || "Usuario",
+                    email: emailKey,
+                    displayName: visualName,
+                    username: visualName,
+                    usernameLower: visualName.toLowerCase(),
                     photoURL: user.photoURL || null,
                     createdAt: serverTimestamp(),
                     lastLogin: serverTimestamp(),
-                    // --- AQUÍ ESTÁ LA MAGIA ---
-                    role: 'user',       // Rol por defecto
-                    credits: 100        // Créditos de bienvenida
+                    role: 'user',
+                    credits: initialCredits
                 };
 
-                // Usamos setDoc para crear el documento inicial
                 await setDoc(userRef, newUserPayload, { merge: true });
-                console.log("🎉 Usuario creado con 100 créditos de regalo.");
 
             } else {
-                // --- CASO 2: USUARIO ANTIGUO (SOLO ACTUALIZAMOS LOGIN) ---
-                // Usamos updateDoc para NO tocar los créditos ni el rol accidentalmente
-                const updatePayload = {
-                    lastLogin: serverTimestamp()
-                };
-                // Solo actualizamos nombre si se proporciona explícitamente
-                if (username) updatePayload.displayName = username;
+                const currentSnap = await getDoc(userRef);
+                const updatePayload = { lastLogin: serverTimestamp() };
 
-                // updateDoc falla si el documento no existe, así que hacemos un fallback seguro
-                try {
-                    await updateDoc(userRef, updatePayload);
-                } catch (e) {
-                    // Si por alguna razón rara no existía el doc, lo creamos
-                    await setDoc(userRef, {
-                        ...updatePayload,
-                        uid: user.uid,
-                        email: user.email,
-                        role: 'user',
-                        credits: 100
-                    }, { merge: true });
+                if (username) {
+                    updatePayload.displayName = username;
+                    updatePayload.username = username;
+                    updatePayload.usernameLower = username.toLowerCase();
                 }
+                else if (currentSnap.exists()) {
+                    const data = currentSnap.data();
+                    if (data.username && !data.usernameLower) {
+                        updatePayload.usernameLower = data.username.toLowerCase();
+                    }
+                }
+
+                await setDoc(userRef, {
+                    ...updatePayload,
+                    uid: user.uid,
+                    email: emailKey
+                }, { merge: true });
             }
         } catch (error) {
-            console.error("Error guardando usuario en DB:", error);
+            console.error("Error DB:", error);
         }
     },
 
-    observeAuthState(callback) {
-        onAuthStateChanged(auth, (user) => callback(user));
-    },
+    observeAuthState(callback) { onAuthStateChanged(auth, callback); },
 
     mapAuthError(error) {
         const code = error.code || '';
         if (code === 'auth/email-already-in-use') return 'Este correo ya está registrado.';
         if (code === 'auth/invalid-email') return 'El correo no es válido.';
-        if (code === 'auth/weak-password') return 'Contraseña débil.';
         if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') return 'Credenciales incorrectas.';
-        if (code === 'custom/username-taken') return 'Usuario ya existe.';
+        if (code === 'custom/username-taken') return 'Ese usuario ya existe.';
         return 'Error inesperado.';
     }
 };
