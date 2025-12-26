@@ -6,8 +6,17 @@ import fs from 'fs';
 import { Storage } from '@google-cloud/storage';
 import apiRoutes from './src/routes/api.js';
 
+// --- NUEVOS IMPORTS PARA ADMIN ---
+import admin from 'firebase-admin';
+import { requireAdmin } from './src/middlewares/paywall.js';
+
 // 1. Configuración Inicial
 dotenv.config();
+
+// Inicializar Firebase Admin si no está iniciado (necesario para buscar emails)
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
 // Configuración de Google Cloud Storage
 const bucketName = process.env.BUCKET_NAME;
@@ -32,7 +41,7 @@ try {
 const publicDir = path.join(process.cwd(), 'public');
 const outputsDir = path.join(publicDir, 'outputs');
 
-// Limpieza inicial de temporales (Solo si no hay bucket o para asegurar limpieza)
+// Limpieza inicial de temporales
 if (!fs.existsSync(outputsDir)) {
   fs.mkdirSync(outputsDir, { recursive: true });
 }
@@ -59,7 +68,6 @@ app.post('/api/save-song', async (req, res) => {
     if (!urls || !userId) return res.status(400).json({ error: 'Faltan datos.' });
 
     const savedUrls = [];
-    // Sanitizar nombre de carpeta
     const safeTitle = (songTitle || 'Untitled').replace(/[^a-zA-Z0-9-_]/g, '_');
     const timestamp = Date.now();
     const songFolder = `${timestamp}_${safeTitle}`;
@@ -67,19 +75,14 @@ app.post('/api/save-song', async (req, res) => {
     for (const url of urls) {
       if (!url) continue;
       try {
-        // Extraer nombre del archivo de la URL actual
         const urlParts = url.split(bucketName + '/')[1];
         if (!urlParts) continue;
 
         const decodedName = decodeURIComponent(urlParts);
         let originalFileName = decodedName.split('/').pop();
-
-        // Destino: saved_songs / USER_ID / SONG_FOLDER / filename.mp3
         const destination = `saved_songs/${userId}/${songFolder}/${originalFileName}`;
 
-        // Copiar de temporal a permanente
         await bucket.file(decodedName).copy(bucket.file(destination));
-
         const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
         savedUrls.push(publicUrl);
 
@@ -115,8 +118,49 @@ app.post('/api/delete-song', async (req, res) => {
   }
 });
 
-// --- RUTA PRINCIPAL DE PROCESAMIENTO (Separación) ---
-// Aquí es donde vive la lógica de subir archivo y separar
+// --- RUTA ADMIN: DAR CRÉDITOS ---
+app.post('/api/admin/add-credits', requireAdmin, async (req, res) => {
+  try {
+    const { targetEmail, amount } = req.body;
+
+    if (!targetEmail || !amount) {
+      return res.status(400).json({ error: 'Faltan datos (email o monto).' });
+    }
+
+    const creditsToAdd = parseInt(amount);
+
+    // 1. Buscar usuario por Email
+    const userRecord = await admin.auth().getUserByEmail(targetEmail);
+    const uid = userRecord.uid;
+
+    // 2. Referencia a Firestore
+    const db = admin.firestore();
+    const userRef = db.collection('users').doc(uid);
+
+    // 3. Transacción para sumar seguro
+    await db.runTransaction(async (t) => {
+      const doc = await t.get(userRef);
+      if (!doc.exists) throw new Error("El usuario no tiene documento en BD.");
+
+      const currentCredits = doc.data().credits || 0;
+      const newTotal = currentCredits + creditsToAdd;
+
+      t.update(userRef, { credits: newTotal });
+    });
+
+    console.log(`⚡ ADMIN: Recarga de ${creditsToAdd} a ${targetEmail}`);
+    res.json({ success: true, message: `✅ Se agregaron ${creditsToAdd} créditos a ${targetEmail}` });
+
+  } catch (error) {
+    console.error("Error dando créditos:", error);
+    if (error.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'No existe usuario con ese correo.' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- RUTA PRINCIPAL DE PROCESAMIENTO ---
 app.use('/api', apiRoutes);
 
 // 5. Iniciar Servidor
@@ -128,7 +172,7 @@ const server = app.listen(PORT, () => {
   📡 URL:  http://localhost:${PORT}
   📦 Modo: ${bucketName ? '☁️ NUBE (GCP)' : '💻 LOCAL (Disco Duro)'}
   🪣 Bucket: ${bucketName || 'NINGUNO'}
-  ⏳ Timeout: 20 minutos
+  ⚡ Admin System: ACTIVO
   ==========================================
   `);
 });

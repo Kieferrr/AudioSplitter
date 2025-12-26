@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const appContainer = document.getElementById('app-container');
     const glassCard = document.querySelector('.glass-card');
     let currentUser = null;
-    let userUnsubscribe = null; // Para manejar la escucha en tiempo real
+    let userUnsubscribe = null;
 
     if (glassCard) glassCard.style.position = 'relative';
 
@@ -56,10 +56,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO (TRANSICIÓN "POP" RESTAURADA) ---
+    // --- HEADER USUARIO ---
     const updateHeaderWithUser = (user) => {
 
-        // 1. Limpiar escucha anterior
         if (userUnsubscribe) {
             userUnsubscribe();
             userUnsubscribe = null;
@@ -67,12 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let userPanel = document.getElementById('user-panel');
 
-        // 2. Determinar posición según estado (Expandido o no)
         const isExpanded = glassCard.classList.contains('expanded');
         const targetLeft = isExpanded ? '25px' : '50%';
         const targetTranslateX = isExpanded ? '0' : '-50%';
 
-        // 3. CREACIÓN INICIAL (Si no existe)
         if (!userPanel) {
             userPanel = document.createElement('div');
             userPanel.id = 'user-panel';
@@ -89,39 +86,38 @@ document.addEventListener('DOMContentLoaded', () => {
             userPanel.style.top = '25px';
             userPanel.style.zIndex = '10';
 
-            // ESTADO INICIAL OCULTO (Para la animación "Pop")
             userPanel.style.opacity = '0';
-            userPanel.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)'; // Rebote suave
+            userPanel.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
 
-            // Posición inicial (pero escalado pequeño para que se agrande luego)
             userPanel.style.left = targetLeft;
             userPanel.style.transform = `translateX(${targetTranslateX}) scale(0.8)`;
 
             glassCard.appendChild(userPanel);
         } else {
-            // Si ya existe, actualizamos posición suavemente
             userPanel.style.left = targetLeft;
-            // Mantenemos escala 1 si ya es visible
             const currentOpacity = window.getComputedStyle(userPanel).opacity;
             const scale = currentOpacity === '0' ? 0.8 : 1;
             userPanel.style.transform = `translateX(${targetTranslateX}) scale(${scale})`;
         }
 
         if (user) {
-            // 4. SUSCRIPCIÓN (ESCUCHAR DATOS)
             userUnsubscribe = authService.subscribeToUser(user.uid, (dbData) => {
 
-                let finalDisplayName = user.displayName || "Usuario";
+                // Prioridad: 1. DB Username, 2. DB DisplayName, 3. Auth DisplayName, 4. "Usuario"
+                let finalDisplayName = "Usuario";
+                if (user.displayName) finalDisplayName = user.displayName;
+
                 let credits = 0;
                 let isAdmin = false;
 
                 if (dbData) {
-                    if (dbData.username || dbData.displayName) finalDisplayName = dbData.username || dbData.displayName;
+                    if (dbData.username) finalDisplayName = dbData.username;
+                    else if (dbData.displayName) finalDisplayName = dbData.displayName;
+
                     credits = dbData.credits !== undefined ? dbData.credits : 0;
                     if (dbData.role === 'admin') isAdmin = true;
                 }
 
-                // Renderizamos contenido (Aún invisible si es la primera carga)
                 const adminBtnHTML = isAdmin ? `
                 <button id="btnAdmin" class="header-btn" style="margin-right: 10px; color: #ffeb3b;" title="Panel Admin">
                     <span class="material-icons">admin_panel_settings</span>
@@ -151,11 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 asignarEventosPanel(userPanel, user);
 
-                // 5. DISPARAR ANIMACIÓN DE ENTRADA (SOLO AHORA QUE HAY DATOS)
-                // Usamos requestAnimationFrame para asegurar que el DOM ya pintó el texto
                 requestAnimationFrame(() => {
                     userPanel.style.opacity = '1';
-                    userPanel.style.transform = `translateX(${targetTranslateX}) scale(1)`; // ¡SE AGRANDA!
+                    userPanel.style.transform = `translateX(${targetTranslateX}) scale(1)`;
                 });
             });
 
@@ -169,27 +163,58 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function asignarEventosPanel(panel, user) {
+        // --- BOTÓN ADMIN (Texto corregido) ---
         const btnAdmin = panel.querySelector('#btnAdmin');
         if (btnAdmin) {
             btnAdmin.onclick = async () => {
-                // Lógica de Admin Simplificada para recargar créditos
                 const { value: formValues } = await Swal.fire({
-                    title: '⚡ Recargar Créditos',
-                    html: '<input id="swal-input1" class="swal2-input" placeholder="Correo"><input id="swal-input2" type="number" class="swal2-input" placeholder="Cantidad">',
+                    title: '⚡ Panel de Admin', // <--- CAMBIO AQUÍ
+                    html: `
+                        <p style="color:#aaa; font-size:0.9rem; margin-bottom:10px;">Recargar créditos a usuario</p>
+                        <input id="swal-input1" class="swal2-input" placeholder="Correo del usuario" style="color: #fff; background: #333; border: 1px solid #555;">
+                        <input id="swal-input2" type="number" class="swal2-input" placeholder="Cantidad (ej: 500)" style="color: #fff; background: #333; border: 1px solid #555;">
+                    `,
                     focusConfirm: false,
-                    background: '#1a1a1a', color: '#fff',
-                    preConfirm: () => [document.getElementById('swal-input1').value, document.getElementById('swal-input2').value]
+                    background: '#1a1a1a',
+                    color: '#fff',
+                    confirmButtonText: 'Recargar',
+                    confirmButtonColor: '#FFD740',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar',
+                    cancelButtonColor: '#333',
+                    preConfirm: () => {
+                        return [
+                            document.getElementById('swal-input1').value,
+                            document.getElementById('swal-input2').value
+                        ]
+                    }
                 });
-                if (formValues && formValues[0]) {
+
+                if (formValues && formValues[0] && formValues[1]) {
                     try {
+                        CustomModal.toast('Procesando recarga...', 'info');
+
                         const token = await user.getIdToken();
-                        await fetch('/api/admin/add-credits', {
+                        const res = await fetch('/api/admin/add-credits', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify({ targetEmail: formValues[0], amount: formValues[1] })
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                targetEmail: formValues[0].trim(),
+                                amount: formValues[1]
+                            })
                         });
-                        CustomModal.toast('Recarga exitosa', 'success');
-                    } catch (e) { CustomModal.alert('Error', e.message); }
+
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Error en servidor');
+
+                        CustomModal.toast('¡Recarga Exitosa!', 'success');
+
+                    } catch (e) {
+                        CustomModal.alert('Error', e.message);
+                    }
                 }
             };
         }
@@ -231,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const p = document.getElementById('user-panel');
             if (p) {
-                p.style.opacity = '0'; // Se desvanece al salir
+                p.style.opacity = '0';
                 setTimeout(() => p.remove(), 300);
             }
 

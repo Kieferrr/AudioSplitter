@@ -3,26 +3,30 @@ import fs from 'fs';
 import path from 'path';
 
 // 1. Inicializar Firebase Admin (Con la Llave Maestra)
-// Leemos el JSON de forma segura
 const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
 
 if (fs.existsSync(serviceAccountPath)) {
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-
     // Verificamos si ya está inicializada para no dar error
     if (!admin.apps.length) {
+        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount)
         });
         console.log("👮 Paywall: Sistema de cobros activo (Modo Admin).");
     }
 } else {
-    console.warn("⚠️ ADVERTENCIA: No se encontró 'serviceAccountKey.json'. El cobro de créditos fallará.");
+    // Fallback: Si no hay JSON, intenta usar credenciales por defecto (útil para Cloud Run en el futuro)
+    if (!admin.apps.length) {
+        admin.initializeApp();
+        console.log("☁️ Paywall: Usando credenciales por defecto de Google Cloud.");
+    } else {
+        console.warn("⚠️ ADVERTENCIA: No se encontró 'serviceAccountKey.json'.");
+    }
 }
 
 const db = admin.firestore();
 
-// 2. Middleware de Cobro
+// 2. Middleware de Cobro (TU VERSIÓN SEGURA CON TRANSACCIONES)
 export const checkCreditBalance = async (req, res, next) => {
     try {
         // A. Buscar el token en la cabecera
@@ -41,7 +45,6 @@ export const checkCreditBalance = async (req, res, next) => {
         const userRef = db.collection('users').doc(uid);
 
         // Usamos una transacción para que el cobro sea ATÓMICO (seguro)
-        // Esto evita que si el usuario hace 2 clics muy rápido, gaste los mismos 10 créditos
         await db.runTransaction(async (t) => {
             const doc = await t.get(userRef);
 
@@ -62,11 +65,11 @@ export const checkCreditBalance = async (req, res, next) => {
             const newBalance = currentCredits - COST;
             t.update(userRef, { credits: newBalance });
 
-            // Inyectamos el usuario en la request por si lo necesitamos luego
+            // Inyectamos el usuario en la request
             req.user = { uid, email: decodedToken.email, newBalance };
         });
 
-        // Si todo salió bien, dejamos pasar a la siguiente función (el upload)
+        // Si todo salió bien, dejamos pasar
         next();
 
     } catch (error) {
@@ -79,10 +82,40 @@ export const checkCreditBalance = async (req, res, next) => {
             });
         }
 
-        if (error.code === 'auth/argument-error') {
+        if (error.code === 'auth/argument-error' || error.code === 'auth/id-token-expired') {
             return res.status(401).json({ error: 'Token inválido o expirado.' });
         }
 
         return res.status(500).json({ error: 'Error procesando el pago de créditos.' });
+    }
+};
+
+// 3. Middleware: Solo Admins (NUEVO - AGREGADO AL FINAL)
+export const requireAdmin = async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Falta token de autorización.' });
+        }
+
+        const token = authHeader.split('Bearer ')[1];
+
+        // Verificar token
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        const uid = decodedToken.uid;
+
+        // Verificar rol en base de datos usando la instancia 'db' global
+        const userDoc = await db.collection('users').doc(uid).get();
+
+        if (!userDoc.exists || userDoc.data().role !== 'admin') {
+            return res.status(403).json({ error: '⛔ Acceso denegado. No eres administrador.' });
+        }
+
+        req.adminUid = uid;
+        next();
+
+    } catch (error) {
+        console.error("Error Admin Auth:", error);
+        return res.status(403).json({ error: 'Falló la verificación de administrador.' });
     }
 };
