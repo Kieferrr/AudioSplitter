@@ -156,6 +156,9 @@ app.post('/api/admin/add-credits', requireAdmin, async (req, res) => {
     if (error.code === 'auth/user-not-found') {
       return res.status(404).json({ error: 'No existe usuario con ese correo.' });
     }
+    if (error.code === 'auth/invalid-email') {
+      return res.status(400).json({ error: 'El formato del correo no es válido.' });
+    }
     res.status(500).json({ error: error.message });
   }
 });

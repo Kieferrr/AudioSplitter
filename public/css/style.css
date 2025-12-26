@@ -190,10 +190,16 @@ body {
     color: white;
 }
 
+/* --- DIVIDER VERTICAL ULTRA COMPACTO --- */
 .v-divider {
     width: 1px;
-    height: 15px;
-    background: rgba(255, 255, 255, 0.2);
+    height: 18px;
+    /* Un poco más bajo */
+    background: rgba(255, 255, 255, 0.15);
+    /* Reducido al mínimo vital */
+    margin: 0 12px;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 .user-email {
@@ -1191,4 +1197,179 @@ div:where(.swal2-container) {
 
 .toast-info {
     color: #2979FF;
+}
+
+/* --- PERFIL SETTINGS (CORREGIDO) --- */
+.profile-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 25px;
+    position: relative;
+}
+
+/* Contenedor principal: NO ocultamos lo que se sale (para el botón) */
+.avatar-container {
+    width: 100px;
+    height: 100px;
+    position: relative;
+    margin-bottom: 15px;
+}
+
+/* El círculo de la imagen/icono */
+.avatar-circle {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    /* Aquí sí cortamos la imagen */
+    background: linear-gradient(135deg, #333 0%, #111 100%);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar-placeholder {
+    font-size: 3rem;
+    color: var(--accent-color);
+}
+
+/* Botón flotante corregido */
+.btn-edit-avatar {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    /* Se sale un poco del círculo visualmente */
+    background: #fff;
+    color: #000;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    z-index: 5;
+    /* Asegura que esté encima */
+    transition: transform 0.2s;
+}
+
+.btn-edit-avatar:hover {
+    transform: scale(1.1);
+}
+
+/* --- GRILLA DE PRESETS (Avatares Musicales) --- */
+.avatar-presets-title {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin: 15px 0 10px 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.avatar-grid {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.preset-btn {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    transition: all 0.2s;
+    opacity: 0.7;
+}
+
+.preset-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.preset-btn.active {
+    border-color: #fff;
+    opacity: 1;
+    transform: scale(1.15);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+/* --- HEADER AVATAR (Miniatura) --- */
+.header-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    margin-right: 12px;
+    /* Espacio con el nombre */
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #222;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    /* No se aplasta */
+}
+
+.header-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.header-avatar .material-icons {
+    font-size: 20px;
+}
+
+/* --- SETTINGS INPUTS (Estilo Profesional) --- */
+.settings-input-readonly {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid #333;
+    color: #ccc;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    margin-bottom: 15px;
+    cursor: not-allowed;
+}
+
+.settings-label {
+    display: block;
+    color: #888;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+/* --- PASSWORD ACCORDION --- */
+.password-accordion {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.password-accordion.open {
+    max-height: 250px;
+    /* Suficiente para abrirse */
+    opacity: 1;
+    margin-top: 15px;
 }

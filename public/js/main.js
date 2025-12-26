@@ -16,12 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (glassCard) glassCard.style.position = 'relative';
 
-    // Referencias UI
     const appHeaderElement = document.querySelector('.app-header');
     const uploadUi = document.getElementById('upload-ui');
     const resultsArea = document.getElementById('results-area');
 
-    // --- VARIABLES GLOBALES ---
+    // Variables globales
     let tracks = [];
     let isPlaying = false;
     let globalDuration = 0;
@@ -32,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let globalMasterVolume = 1.0;
     let btnPlayPause, btnStop, currentTimeSpan, totalTimeSpan;
 
-    // --- TRANSICIONES ---
     const transitionViews = (oldElem, newElem, onComplete = () => { }) => {
         if (oldElem && !oldElem.classList.contains('hidden')) {
             oldElem.classList.add('fade-out');
@@ -56,18 +54,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- HEADER USUARIO ---
     const updateHeaderWithUser = (user) => {
-
-        if (userUnsubscribe) {
-            userUnsubscribe();
-            userUnsubscribe = null;
-        }
+        if (userUnsubscribe) { userUnsubscribe(); userUnsubscribe = null; }
 
         let userPanel = document.getElementById('user-panel');
-
         const isExpanded = glassCard.classList.contains('expanded');
-        const targetLeft = isExpanded ? '25px' : '50%';
+        const targetLeft = isExpanded ? '20px' : '50%';
         const targetTranslateX = isExpanded ? '0' : '-50%';
 
         if (!userPanel) {
@@ -75,23 +67,22 @@ document.addEventListener('DOMContentLoaded', () => {
             userPanel.id = 'user-panel';
             userPanel.style.display = 'flex';
             userPanel.style.alignItems = 'center';
+            userPanel.style.gap = '0px';
             userPanel.style.whiteSpace = 'nowrap';
             userPanel.style.background = 'rgba(255, 255, 255, 0.08)';
             userPanel.style.backdropFilter = 'blur(12px)';
             userPanel.style.border = '1px solid rgba(255, 255, 255, 0.1)';
             userPanel.style.borderRadius = '50px';
-            userPanel.style.padding = '6px 16px';
+            // Padding ajustado para que el escudo no quede pegado al borde izquierdo
+            userPanel.style.padding = '5px 12px';
             userPanel.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
             userPanel.style.position = 'absolute';
             userPanel.style.top = '25px';
             userPanel.style.zIndex = '10';
-
             userPanel.style.opacity = '0';
             userPanel.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-
             userPanel.style.left = targetLeft;
             userPanel.style.transform = `translateX(${targetTranslateX}) scale(0.8)`;
-
             glassCard.appendChild(userPanel);
         } else {
             userPanel.style.left = targetLeft;
@@ -102,45 +93,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (user) {
             userUnsubscribe = authService.subscribeToUser(user.uid, (dbData) => {
-
-                // Prioridad: 1. DB Username, 2. DB DisplayName, 3. Auth DisplayName, 4. "Usuario"
                 let finalDisplayName = "Usuario";
                 if (user.displayName) finalDisplayName = user.displayName;
-
                 let credits = 0;
                 let isAdmin = false;
 
                 if (dbData) {
                     if (dbData.username) finalDisplayName = dbData.username;
                     else if (dbData.displayName) finalDisplayName = dbData.displayName;
-
                     credits = dbData.credits !== undefined ? dbData.credits : 0;
                     if (dbData.role === 'admin') isAdmin = true;
                 }
 
+                const getAvatarHTML = (photoURL) => {
+                    if (photoURL && photoURL.startsWith('http')) {
+                        return `<img src="${photoURL}" alt="U">`;
+                    } else if (photoURL && photoURL.startsWith('preset:')) {
+                        const parts = photoURL.split('|');
+                        const icon = parts[1] ? parts[0].split(':')[1] : 'default';
+                        const color = parts[1] || '#fff';
+                        const safeIcons = { default: 'music_note', rock: 'album', pop: 'mic', electro: 'headphones', jazz: 'piano', rap: 'graphic_eq' };
+                        return `<span class="material-icons" style="color:${color}; font-size: 20px;">${safeIcons[icon] || 'music_note'}</span>`;
+                    } else {
+                        return `<span class="material-icons" style="color:var(--accent-color);">account_circle</span>`;
+                    }
+                };
+
+                const avatarHTML = getAvatarHTML(dbData?.photoURL || user.photoURL);
+
+                // --- BOTONES LIMPIOS (SIN MÁRGENES INLINE) ---
+                // Dejamos que el .v-divider con margin: 0 5px haga el trabajo de separación
+
+                // 1. ESCUDO ADMIN: Sin márgenes extra (El v-divider se encarga)
                 const adminBtnHTML = isAdmin ? `
-                <button id="btnAdmin" class="header-btn" style="margin-right: 10px; color: #ffeb3b;" title="Panel Admin">
-                    <span class="material-icons">admin_panel_settings</span>
+                <button id="btnAdmin" class="header-btn" style="color: #ffeb3b;" title="Admin">
+                    <span class="material-icons">shield</span>
                 </button>
                 <div class="v-divider"></div>
                 ` : '';
 
                 userPanel.innerHTML = `
                 ${adminBtnHTML}
+                
                 <button id="btnLibrary" class="header-btn">
-                    <span class="material-icons">library_music</span> Mis Canciones
+                    <span class="material-icons">library_music</span> 
+                    <span class="desktop-only" style="margin-left:4px;">Mis Canciones</span>
                 </button>
+
                 <div class="v-divider"></div>
-                <div style="display: flex; flex-direction: column; align-items: flex-start; margin-right: 5px;">
-                    <span class="user-email" style="font-weight: 600; line-height: 1.1;">${finalDisplayName}</span>
-                    <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">
-                        ${credits} créditos
-                    </span>
+
+                <div style="display: flex; align-items: center; margin-left: 2px;">
+                    <div class="header-avatar" style="margin-right: 8px;">
+                        ${avatarHTML}
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-start; max-width: 130px;">
+                        <span class="user-email" style="font-weight: 700; line-height: 1.1; font-size: 0.9rem; 
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
+                            ${finalDisplayName}
+                        </span>
+                        <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 500;">
+                            ${credits} créditos
+                        </span>
+                    </div>
                 </div>
-                <button id="btnSettings" class="header-btn" style="margin-left: 10px;" title="Ajustes">
+
+                <button id="btnSettings" class="header-btn" style="margin-left: 16px;" title="Ajustes">
                     <span class="material-icons">settings</span>
                 </button>
-                <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 5px;">
+                
+                <button id="btnLogout" class="logout-btn" title="Salir" style="margin-left: 12px;">
                     <span class="material-icons">logout</span>
                 </button>
                 `;
@@ -154,45 +175,31 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
         } else {
-            userPanel.innerHTML = `<span class="user-email" style="color: #aaa;">Invitado</span>`;
-            requestAnimationFrame(() => {
-                userPanel.style.opacity = '1';
-                userPanel.style.transform = `translateX(${targetTranslateX}) scale(1)`;
-            });
+            userPanel.innerHTML = '';
+            userPanel.style.opacity = '0';
         }
     };
 
     function asignarEventosPanel(panel, user) {
-        // --- BOTÓN ADMIN (Texto corregido) ---
+        // Admin
         const btnAdmin = panel.querySelector('#btnAdmin');
         if (btnAdmin) {
             btnAdmin.onclick = async () => {
                 const { value: formValues } = await Swal.fire({
-                    title: '⚡ Panel de Admin', // <--- CAMBIO AQUÍ
-                    html: `
-                        <p style="color:#aaa; font-size:0.9rem; margin-bottom:10px;">Recargar créditos a usuario</p>
-                        <input id="swal-input1" class="swal2-input" placeholder="Correo del usuario" style="color: #fff; background: #333; border: 1px solid #555;">
-                        <input id="swal-input2" type="number" class="swal2-input" placeholder="Cantidad (ej: 500)" style="color: #fff; background: #333; border: 1px solid #555;">
-                    `,
+                    title: '⚡ Panel de Admin',
+                    html: `<input id="swal-input1" class="swal2-input" placeholder="Correo"><input id="swal-input2" type="number" class="swal2-input" placeholder="Cantidad">`,
                     focusConfirm: false,
                     background: '#1a1a1a',
                     color: '#fff',
                     confirmButtonText: 'Recargar',
                     confirmButtonColor: '#FFD740',
-                    showCancelButton: true,
-                    cancelButtonText: 'Cancelar',
-                    cancelButtonColor: '#333',
-                    preConfirm: () => {
-                        return [
-                            document.getElementById('swal-input1').value,
-                            document.getElementById('swal-input2').value
-                        ]
-                    }
+                    preConfirm: () => [document.getElementById('swal-input1').value, document.getElementById('swal-input2').value]
                 });
 
                 if (formValues && formValues[0] && formValues[1]) {
                     try {
-                        CustomModal.toast('Procesando recarga...', 'info');
+                        // Feedback visual de carga
+                        CustomModal.toast('Procesando...', 'info');
 
                         const token = await user.getIdToken();
                         const res = await fetch('/api/admin/add-credits', {
@@ -207,31 +214,43 @@ document.addEventListener('DOMContentLoaded', () => {
                             })
                         });
 
+                        // 1. LEEMOS LA RESPUESTA DEL SERVIDOR
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Error en servidor');
 
-                        CustomModal.toast('¡Recarga Exitosa!', 'success');
+                        // 2. VERIFICAMOS SI HUBO ERROR (404, 500, etc)
+                        if (!res.ok) {
+                            // Si el servidor mandó un error, lo lanzamos para que vaya al catch
+                            throw new Error(data.error || 'Error desconocido en el servidor');
+                        }
+
+                        // 3. SI LLEGAMOS AQUÍ, FUE ÉXITO REAL
+                        CustomModal.toast(data.message || '¡Recarga Exitosa!', 'success');
 
                     } catch (e) {
-                        CustomModal.alert('Error', e.message);
+                        // Aquí cae si el correo no existe o falló algo
+                        console.error(e);
+                        CustomModal.alert('Error en Recarga', e.message);
                     }
                 }
             };
         }
 
+        // ... (El resto de la función: btnLogout, btnLibrary, btnSettings sigue igual) ...
         const btnLogout = panel.querySelector('#btnLogout');
         if (btnLogout) btnLogout.onclick = async () => { await authService.logout(); showLogin(); };
 
         const btnLibrary = panel.querySelector('#btnLibrary');
-        if (btnLibrary) btnLibrary.onclick = () => {
-            new LibraryModal(user.uid, (songData) => {
-                resetApplication();
-                setTimeout(() => {
-                    currentSongData = songData;
-                    initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
-                }, 350);
-            });
-        };
+        if (btnLibrary) {
+            btnLibrary.onclick = () => {
+                new LibraryModal(user.uid, (songData) => {
+                    resetApplication();
+                    setTimeout(() => {
+                        currentSongData = songData;
+                        initDAW(songData.urls, songData.title, songData.zip, songData.instrumental, songData.bpm, songData.key, true);
+                    }, 350);
+                });
+            };
+        }
 
         const btnSettings = panel.querySelector('#btnSettings');
         if (btnSettings) btnSettings.onclick = () => { new SettingsModal(user, () => showLogin()); };
@@ -242,35 +261,27 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUser = user;
         updateHeaderWithUser(user);
         if (!appContainer.classList.contains('hidden')) return;
-        transitionViews(authContainer, appContainer, () => { authContainer.innerHTML = ''; });
+        transitionViews(authContainer, appContainer, () => {
+            authContainer.innerHTML = '';
+        });
     };
 
     const showLogin = () => {
         currentUser = null;
         if (userUnsubscribe) { userUnsubscribe(); userUnsubscribe = null; }
-
         if (!authContainer.classList.contains('hidden') && appContainer.classList.contains('hidden')) return;
         transitionViews(appContainer, authContainer, () => {
             resetApplication();
             glassCard.classList.remove('expanded');
-
             const p = document.getElementById('user-panel');
-            if (p) {
-                p.style.opacity = '0';
-                setTimeout(() => p.remove(), 300);
-            }
-
+            if (p) { p.style.opacity = '0'; setTimeout(() => p.remove(), 300); }
             new AuthComponent(authContainer, (user) => showApp(user), () => showApp(null));
         });
     };
 
-    // --- OBSERVER ---
-    authService.observeAuthState((user) => {
-        if (user) showApp(user);
-        else showLogin();
-    });
+    authService.observeAuthState((user) => { if (user) showApp(user); else showLogin(); });
 
-    // --- UPLOAD ---
+    // --- UPLOAD LOGIC ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('fileInput');
     const formatSelect = document.getElementById('formatSelect');
@@ -280,36 +291,59 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBar = document.getElementById('progress-bar');
     let timerText = document.getElementById('timer-text');
     if (!timerText) {
-        timerText = document.createElement('p'); timerText.id = 'timer-text'; timerText.className = 'timer-text';
+        timerText = document.createElement('p');
+        timerText.id = 'timer-text';
+        timerText.className = 'timer-text';
         progressBarContainer.after(timerText);
     }
 
     dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleUpload(e.target.files[0]); });
-    ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.add('drag-active'); }));
-    ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, (ev) => { ev.preventDefault(); dropZone.classList.remove('drag-active'); }));
-    dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]); });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleUpload(e.target.files[0]);
+    });
+    ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, (ev) => {
+        ev.preventDefault();
+        dropZone.classList.add('drag-active');
+    }));
+    ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, (ev) => {
+        ev.preventDefault();
+        dropZone.classList.remove('drag-active');
+    }));
+    dropZone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files.length) handleUpload(e.dataTransfer.files[0]);
+    });
 
-    function estimateProcessingTime(dur, fmt) { return (dur * 0.9) + (fmt === 'wav' ? 60 : 30); }
+    function estimateProcessingTime(dur, fmt) {
+        return (dur * 0.9) + (fmt === 'wav' ? 60 : 30);
+    }
+
     function getAudioDuration(file) {
         return new Promise(r => {
-            const u = URL.createObjectURL(file), a = new Audio(u);
-            a.onloadedmetadata = () => { URL.revokeObjectURL(u); r(a.duration); };
+            const u = URL.createObjectURL(file),
+                a = new Audio(u);
+            a.onloadedmetadata = () => {
+                URL.revokeObjectURL(u);
+                r(a.duration);
+            };
             a.onerror = () => r(180);
         });
     }
 
     function startProgressTimer(seconds) {
-        progressBarContainer.style.display = 'block'; progressBar.style.width = '0%'; progressBar.classList.remove('indeterminate');
+        progressBarContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.classList.remove('indeterminate');
         const start = Date.now();
         if (visualTimerInterval) clearInterval(visualTimerInterval);
         visualTimerInterval = setInterval(() => {
             const elapsed = (Date.now() - start) / 1000;
-            let pct = (elapsed / seconds) * 100; if (pct > 95) pct = 95;
+            let pct = (elapsed / seconds) * 100;
+            if (pct > 95) pct = 95;
             progressBar.style.width = `${pct}%`;
             const left = Math.max(0, seconds - elapsed);
             if (left > 0) {
-                const m = Math.floor(left / 60), s = Math.floor(left % 60);
+                const m = Math.floor(left / 60),
+                    s = Math.floor(left % 60);
                 timerText.textContent = `Tiempo estimado: ${m}:${s.toString().padStart(2, '0')}`;
             } else {
                 timerText.textContent = "Finalizando...";
@@ -317,16 +351,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 100);
     }
+
     function stopProgressTimer() {
         if (visualTimerInterval) clearInterval(visualTimerInterval);
-        progressBar.classList.remove('indeterminate'); progressBar.style.width = '100%'; timerText.textContent = "¡Listo!";
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.width = '100%';
+        timerText.textContent = "¡Listo!";
         setTimeout(() => progressBarContainer.style.display = 'none', 500);
     }
 
     async function handleUpload(file) {
         if (!currentUser) {
-            CustomModal.alert('Identifícate', 'Debes iniciar sesión para procesar canciones.', 'Iniciar Sesión')
-                .then(() => showLogin());
+            CustomModal.alert('Identifícate', 'Debes iniciar sesión.', 'Iniciar').then(() => showLogin());
             return;
         }
 
@@ -347,7 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         showLoader("Analizando archivo...");
-        loaderText.textContent = `Procesando: ${file.name}`;
+
+        const maxLength = 25;
+        const displayName = file.name.length > maxLength ? file.name.substring(0, maxLength) + '...' : file.name;
+        loaderText.textContent = `Procesando: ${displayName}`;
 
         if (!document.getElementById('warn-text')) {
             const warn = document.createElement('p');
@@ -355,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
             warn.style.color = '#ff4081';
             warn.style.fontSize = '0.8rem';
             warn.style.marginTop = '10px';
-            warn.textContent = '⚠️ No cierres esta pestaña o perderás tus créditos.';
+            warn.textContent = '⚠️ No cierres esta pestaña.';
             loaderText.after(warn);
         }
 
@@ -369,7 +408,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const token = await currentUser.getIdToken();
             const res = await fetch('/api/upload', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
                 body: fd
             });
 
@@ -402,7 +443,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showLoader(txt) { loaderText.textContent = txt; transitionViews(uploadUi, loader); }
+    function showLoader(txt) {
+        loaderText.textContent = txt;
+        transitionViews(uploadUi, loader);
+    }
+
     function resetUI() {
         loader.classList.add('hidden');
         progressBarContainer.style.display = 'none';
@@ -455,41 +500,65 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (document.getElementById('btnSaveToCloud')) {
                 document.getElementById('btnSaveToCloud').addEventListener('click', async (e) => {
-                    const b = e.currentTarget, orig = b.innerHTML;
-                    b.disabled = true; b.innerHTML = '<span class="material-icons icon-spin">sync</span> ...';
+                    const b = e.currentTarget,
+                        orig = b.innerHTML;
+                    b.disabled = true;
+                    b.innerHTML = '<span class="material-icons icon-spin">sync</span> ...';
                     try {
                         await dbService.saveSong(currentUser.uid, currentSongData);
                         CustomModal.toast('Canción guardada en tu biblioteca', 'success');
                         b.remove();
                     } catch (e) {
                         CustomModal.alert('Error al guardar', e.message);
-                        b.disabled = false; b.innerHTML = orig;
+                        b.disabled = false;
+                        b.innerHTML = orig;
                     }
                 });
             }
 
-            btnPlayPause = document.getElementById('btnPlayPause'); btnStop = document.getElementById('btnStop');
-            currentTimeSpan = document.getElementById('currentTime'); totalTimeSpan = document.getElementById('totalTime');
+            btnPlayPause = document.getElementById('btnPlayPause');
+            btnStop = document.getElementById('btnStop');
+            currentTimeSpan = document.getElementById('currentTime');
+            totalTimeSpan = document.getElementById('totalTime');
             const mVol = document.getElementById('masterVolume');
-            mVol.value = globalMasterVolume; mVol.oninput = (e) => { globalMasterVolume = parseFloat(e.target.value); tracks.forEach(t => t.setMasterVolume(globalMasterVolume)); };
+            mVol.value = globalMasterVolume;
+            mVol.oninput = (e) => {
+                globalMasterVolume = parseFloat(e.target.value);
+                tracks.forEach(t => t.setMasterVolume(globalMasterVolume));
+            };
 
             const tWrapper = document.getElementById('tracks-wrapper');
             tracks = [];
-            const colors = { 'vocals': '#FF4081', 'drums': '#00E676', 'bass': '#FFD740', 'other': '#7C4DFF' };
+            const colors = {
+                'vocals': '#FF4081',
+                'drums': '#00E676',
+                'bass': '#FFD740',
+                'other': '#7C4DFF'
+            };
             files.forEach(url => {
                 let stem = 'other';
-                if (url.includes('vocals')) stem = 'vocals'; else if (url.includes('drums')) stem = 'drums'; else if (url.includes('bass')) stem = 'bass';
+                if (url.includes('vocals')) stem = 'vocals';
+                else if (url.includes('drums')) stem = 'drums';
+                else if (url.includes('bass')) stem = 'bass';
                 tracks.push(new TrackComponent(tWrapper, stem, url, colors[stem] || '#7C4DFF'));
             });
 
             const checkInt = setInterval(() => {
                 if (tracks[0] && tracks[0].isReady()) {
-                    globalDuration = tracks[0].wavesurfer.getDuration(); totalTimeSpan.textContent = formatTime(globalDuration); clearInterval(checkInt);
+                    globalDuration = tracks[0].wavesurfer.getDuration();
+                    totalTimeSpan.textContent = formatTime(globalDuration);
+                    clearInterval(checkInt);
                 }
             }, 500);
 
             if (typeof Sortable !== 'undefined' && sortableInstance) sortableInstance.destroy();
-            if (typeof Sortable !== 'undefined') try { sortableInstance = new Sortable(tWrapper, { animation: 250, handle: '.drag-handle', ghostClass: 'sortable-ghost' }); } catch (e) { }
+            if (typeof Sortable !== 'undefined') try {
+                sortableInstance = new Sortable(tWrapper, {
+                    animation: 250,
+                    handle: '.drag-handle',
+                    ghostClass: 'sortable-ghost'
+                });
+            } catch (e) { }
 
             assignPlayerListeners(tWrapper);
         }, 50);
@@ -497,40 +566,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function assignPlayerListeners(c) {
         btnPlayPause.onclick = () => {
-            if (isPlaying) { tracks.forEach(t => t.pause()); isPlaying = false; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>'; clearInterval(progressInterval); }
-            else { tracks.forEach(t => t.play()); isPlaying = true; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">pause</span>'; startTimer(); }
+            if (isPlaying) {
+                tracks.forEach(t => t.pause());
+                isPlaying = false;
+                btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>';
+                clearInterval(progressInterval);
+            } else {
+                tracks.forEach(t => t.play());
+                isPlaying = true;
+                btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">pause</span>';
+                startTimer();
+            }
         };
-        btnStop.onclick = () => { tracks.forEach(t => t.stop()); isPlaying = false; btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>'; clearInterval(progressInterval); currentTimeSpan.textContent = "00:00"; };
+        btnStop.onclick = () => {
+            tracks.forEach(t => t.stop());
+            isPlaying = false;
+            btnPlayPause.innerHTML = '<span class="material-icons" style="font-size:30px;">play_arrow</span>';
+            clearInterval(progressInterval);
+            currentTimeSpan.textContent = "00:00";
+        };
         c.addEventListener('track-solo', (e) => {
             const req = tracks.find(t => t.name === e.detail.name);
-            if (req.isSolo) tracks.forEach(t => { if (t.name !== req.name) t.disableSolo(); }); refreshMuteState();
+            if (req.isSolo) tracks.forEach(t => {
+                if (t.name !== req.name) t.disableSolo();
+            });
+            refreshMuteState();
         });
         c.addEventListener('track-mute', refreshMuteState);
-        c.addEventListener('track-seek', (e) => { tracks.forEach(t => { if (t.name !== e.detail.sourceTrack) t.seekTo(e.detail.progress); }); currentTimeSpan.textContent = formatTime(globalDuration * e.detail.progress); });
+        c.addEventListener('track-seek', (e) => {
+            tracks.forEach(t => {
+                if (t.name !== e.detail.sourceTrack) t.seekTo(e.detail.progress);
+            });
+            currentTimeSpan.textContent = formatTime(globalDuration * e.detail.progress);
+        });
     }
 
     function refreshMuteState() {
         const anySolo = tracks.some(t => t.isSolo);
-        tracks.forEach(t => { let silent = false; if (anySolo) { if (!t.isSolo) silent = true; } else { if (t.isMuted) silent = true; } t.setSilent(silent); });
+        tracks.forEach(t => {
+            let silent = false;
+            if (anySolo) {
+                if (!t.isSolo) silent = true;
+            } else {
+                if (t.isMuted) silent = true;
+            }
+            t.setSilent(silent);
+        });
     }
 
     function startTimer() {
         if (progressInterval) clearInterval(progressInterval);
         progressInterval = setInterval(() => {
             if (!tracks.length) return;
-            const cur = tracks[0].wavesurfer.getCurrentTime(); currentTimeSpan.textContent = formatTime(cur);
+            const cur = tracks[0].wavesurfer.getCurrentTime();
+            currentTimeSpan.textContent = formatTime(cur);
             if (globalDuration > 0 && cur >= globalDuration) btnStop.click();
         }, 100);
     }
-    function formatTime(s) { if (!s) return "00:00"; const m = Math.floor(s / 60), sc = Math.floor(s % 60); return `${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}`; }
+
+    function formatTime(s) {
+        if (!s) return "00:00";
+        const m = Math.floor(s / 60),
+            sc = Math.floor(s % 60);
+        return `${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}`;
+    }
 
     function resetApplication() {
         if (isPlaying && btnStop) btnStop.click();
-
         transitionViews(resultsArea, uploadUi, () => {
-            appHeaderElement.classList.remove('hidden'); glassCard.classList.remove('expanded');
-            tracks.forEach(t => { if (t.wavesurfer) t.wavesurfer.destroy(); }); tracks = []; resultsArea.innerHTML = '';
-            resetUI(); currentSongData = null;
+            appHeaderElement.classList.remove('hidden');
+            glassCard.classList.remove('expanded');
+            tracks.forEach(t => {
+                if (t.wavesurfer) t.wavesurfer.destroy();
+            });
+            tracks = [];
+            resultsArea.innerHTML = '';
+            resetUI();
+            currentSongData = null;
             if (currentUser) updateHeaderWithUser(currentUser);
         });
     }
