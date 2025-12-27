@@ -4,18 +4,39 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { Storage } from '@google-cloud/storage';
+import { createRequire } from 'module'; // Necesario para cargar JSON en modo import
 import apiRoutes from './src/routes/api.js';
 
 // --- NUEVOS IMPORTS PARA ADMIN ---
 import admin from 'firebase-admin';
 import { requireAdmin } from './src/middlewares/paywall.js';
 
+// Configurar require para poder leer el JSON local
+const require = createRequire(import.meta.url);
+
 // 1. Configuración Inicial
 dotenv.config();
 
-// Inicializar Firebase Admin si no está iniciado (necesario para buscar emails)
+// --- INICIALIZACIÓN INTELIGENTE DE FIREBASE ---
+// Si Firebase no está iniciado aún...
 if (!admin.apps.length) {
-  admin.initializeApp();
+  try {
+    // 1. Intenta cargar la llave local (Solo funcionará en tu PC si el archivo existe)
+    const serviceAccount = require('./firebase-key.json');
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      storageBucket: process.env.BUCKET_NAME // Usa tu variable de entorno
+    });
+    console.log("🔒 Modo Local: Usando firebase-key.json");
+
+  } catch (e) {
+    // 2. Si falla (porque en la nube el archivo no existe), usa credenciales automáticas
+    admin.initializeApp({
+      storageBucket: process.env.BUCKET_NAME
+    });
+    console.log("☁️ Modo Nube: Usando Credenciales Automáticas (ADC)");
+  }
 }
 
 // Configuración de Google Cloud Storage
@@ -23,7 +44,7 @@ const bucketName = process.env.BUCKET_NAME;
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Inicializar Storage
+// Inicializar Storage (Para guardar canciones)
 let storage, bucket;
 try {
   if (bucketName) {
